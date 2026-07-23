@@ -28,6 +28,11 @@ See the [Lint Reference](lints/) for what each lint catches and its default seve
 `cargo cost-lint` strictly validates your `budget.toml`:
 - If an unknown lint **name** is provided (e.g., due to a typo), the tool will print an error listing valid lints and exit immediately. This ensures a mistyped `deny` cannot silently fail to apply.
 - If an unknown lint **level** is provided, the tool will emit an error and exit immediately. Valid levels are `allow`, `warn`, and `deny`.
+- If a `budget.toml` exists but cannot be read or parsed, the run fails with a non-zero exit code and the parser's message is reported.
+
+{% hint style="danger" %}
+A malformed or unreadable `budget.toml` is a hard error — the run will fail instead of silently falling back to the default lint levels.
+{% endhint %}
 
 ## GitHub Actions
 
