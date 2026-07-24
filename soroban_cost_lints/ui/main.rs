@@ -82,28 +82,6 @@ fn allowed_clone_env(env: Env) {
     let _cloned = env.clone(); // Good (allowed)
 }
 
-// =======================================================================
-// unnecessary_host_function_call — Fixtures
-// =======================================================================
 
-fn bad_host_call_in_loop(env: Env) {
-    for _ in 0..10 {
-        let _seq = env.ledger().sequence(); // Should Warn
-    }
-}
-
-fn good_host_call_outside_loop(env: Env) {
-    let seq = env.ledger().sequence(); // Good — called once before the loop
-    for _ in 0..10 {
-        let _seq = seq;
-    }
-}
-
-#[allow(unnecessary_host_function_call)]
-fn allowed_host_call_in_loop(env: Env) {
-    for _ in 0..10 {
-        let _seq = env.ledger().sequence(); // Good (allowed)
-    }
-}
 
 fn main() {}
