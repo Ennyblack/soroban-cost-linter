@@ -23,6 +23,21 @@ unnecessary_host_function_call = "warn"
 See the [Lint Reference](lints/) for what each lint catches and its default severity.
 {% endhint %}
 
+### Targeting Packages and Workspaces
+
+`cargo cost-lint` supports passing Cargo-level arguments through to the underlying linter process:
+
+- `--manifest-path <PATH>`: Path to the `Cargo.toml` to lint.
+- `--workspace` / `-w`: Lint all packages in the workspace.
+- `--package <SPEC>` / `-p <SPEC>`: Lint a specific package.
+- `-- [ARGS]...`: Any additional trailing arguments are forwarded directly to `cargo dylint`.
+
+Example usage:
+```sh
+cargo cost-lint --workspace
+cargo cost-lint -p my-contract -- --tests
+```
+
 ### Validation
 
 `cargo cost-lint` strictly validates your `budget.toml`:

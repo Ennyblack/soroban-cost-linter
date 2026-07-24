@@ -10,6 +10,18 @@ use std::process::{exit, Command};
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
+
+    #[arg(long, help = "Path to Cargo.toml")]
+    manifest_path: Option<String>,
+
+    #[arg(long, short = 'w', help = "Lint all packages in the workspace")]
+    workspace: bool,
+
+    #[arg(long, short = 'p', help = "Package to lint")]
+    package: Option<String>,
+
+    #[arg(last = true, help = "Additional arguments passed to cargo dylint")]
+    passthrough: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -97,10 +109,38 @@ fn main() {
         eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
 
+    let preflight = Command::new("cargo")
+        .arg("dylint")
+        .arg("--version")
+        .output();
+
+    match preflight {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("Error: cargo-dylint is not installed or not available in PATH.");
+            eprintln!("Please install it by running:");
+            eprintln!("    cargo install cargo-dylint dylint-link");
+            exit(1);
+        }
+    }
+
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
     cmd.arg("--lib");
     cmd.arg("soroban_cost_lints");
+
+    if let Some(path) = cli.manifest_path {
+        cmd.arg("--manifest-path").arg(path);
+    }
+    if cli.workspace {
+        cmd.arg("--workspace");
+    }
+    if let Some(pkg) = cli.package {
+        cmd.arg("--package").arg(pkg);
+    }
+    if !cli.passthrough.is_empty() {
+        cmd.args(cli.passthrough);
+    }
 
     if !lint_flags.is_empty() {
         let mut rustflags = std::env::var("DYLINT_RUSTFLAGS").unwrap_or_default();
@@ -113,9 +153,16 @@ fn main() {
         cmd.env("DYLINT_RUSTFLAGS", rustflags);
     }
 
-    let status = cmd
-        .status()
-        .expect("Failed to execute cargo dylint. Is cargo-dylint installed?");
+    let mut child = cmd.spawn().unwrap_or_else(|e| {
+        eprintln!("Error: Failed to spawn cargo dylint process: {}", e);
+        exit(1);
+    });
+
+    let status = child.wait().unwrap_or_else(|e| {
+        eprintln!("Error: Failed to wait on cargo dylint process: {}", e);
+        exit(1);
+    });
+
     if !status.success() {
         exit(status.code().unwrap_or(1));
     }
