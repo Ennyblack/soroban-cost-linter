@@ -1,14 +1,19 @@
 #![feature(rustc_private)]
 #![warn(unused_extern_crates)]
 
+extern crate rustc_ast;
+extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
-use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::diagnostics::{span_lint_and_help, span_lint_and_sugg};
 use clippy_utils::get_enclosing_loop_or_multi_call_closure;
+use clippy_utils::source::snippet_opt;
+use rustc_ast::LitKind;
+use rustc_errors::Applicability;
 use rustc_hir as hir;
 use rustc_lint::{LateContext, LateLintPass, LintStore};
 use rustc_span::def_id::DefId;
@@ -27,6 +32,7 @@ pub enum LintCategory {
     Compute,
     Memory,
     EntryLifecycle,
+    SymbolOperations,
 }
 
 pub struct LintMetadata {
@@ -52,8 +58,8 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
-        lint: REDUNDANT_VAL_CONVERSION,
-        category: LintCategory::Compute,
+        lint: SYMBOL_NEW_FOR_SHORT_LITERAL,
+        category: LintCategory::SymbolOperations,
     },
 ];
 
@@ -64,13 +70,13 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
-        REDUNDANT_VAL_CONVERSION,
+        SYMBOL_NEW_FOR_SHORT_LITERAL,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
-    lint_store.register_late_pass(|_| Box::new(RedundantValConversion));
+    lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
 }
 
 rustc_session::declare_lint! {
@@ -226,171 +232,67 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
     }
 }
 
+// =======================================================================
+// symbol_new_for_short_literal — Lint
+// =======================================================================
+
 rustc_session::declare_lint! {
-    pub REDUNDANT_VAL_CONVERSION,
+    pub SYMBOL_NEW_FOR_SHORT_LITERAL,
     Warn,
-    "redundant conversion to or from Val"
+    "Symbol::new used with a short literal that could use symbol_short! macro"
 }
-pub struct RedundantValConversion;
-rustc_session::impl_lint_pass!(RedundantValConversion => [REDUNDANT_VAL_CONVERSION]);
+pub struct SymbolNewForShortLiteral;
+rustc_session::impl_lint_pass!(SymbolNewForShortLiteral => [SYMBOL_NEW_FOR_SHORT_LITERAL]);
 
-fn unwrap_borrows<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
-    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
-        expr = inner;
-    }
-    expr
-}
-
-fn is_same_type_ignoring_result<'tcx>(
-    cx: &LateContext<'tcx>,
-    source: rustc_middle::ty::Ty<'tcx>,
-    dest: rustc_middle::ty::Ty<'tcx>,
-) -> bool {
-    let source = source.peel_refs();
-    let dest = dest.peel_refs();
-
-    if source == dest {
-        return true;
-    }
-
-    if clippy_utils::ty::is_type_diagnostic_item(cx, dest, rustc_span::sym::Result) {
-        if let rustc_middle::ty::Adt(_, args) = dest.kind() {
-            if args.type_at(0).peel_refs() == source {
-                return true;
-            }
-        }
-    }
-
-    if clippy_utils::ty::is_type_diagnostic_item(cx, source, rustc_span::sym::Result) {
-        if let rustc_middle::ty::Adt(_, args) = source.kind() {
-            if args.type_at(0).peel_refs() == dest {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn get_inner_conversion_source_type<'tcx>(
-    cx: &LateContext<'tcx>,
-    expr: &'tcx hir::Expr<'tcx>,
-) -> Option<rustc_middle::ty::Ty<'tcx>> {
-    let expr = unwrap_borrows(expr);
-    let typeck = cx.typeck_results();
-
-    if let hir::ExprKind::MethodCall(_path, receiver, _args, _span) = expr.kind {
-        if let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id) {
-            if match_soroban_def_path(cx, def_id, &["IntoVal", "into_val"])
-                || match_soroban_def_path(cx, def_id, &["TryIntoVal", "try_into_val"])
-            {
-                return Some(typeck.expr_ty(receiver).peel_refs());
-            }
-        }
-    } else if let hir::ExprKind::Call(path_expr, args) = expr.kind {
-        if let hir::ExprKind::Path(ref qpath) = path_expr.kind {
-            if let Some(def_id) = cx.qpath_res(qpath, path_expr.hir_id).opt_def_id() {
-                if match_soroban_def_path(cx, def_id, &["FromVal", "from_val"])
-                    || match_soroban_def_path(cx, def_id, &["TryFromVal", "try_from_val"])
-                    || match_soroban_def_path(cx, def_id, &["IntoVal", "into_val"])
-                    || match_soroban_def_path(cx, def_id, &["TryIntoVal", "try_into_val"])
-                {
-                    if args.len() >= 2 {
-                        return Some(typeck.expr_ty(&args[1]).peel_refs());
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-impl<'tcx> LateLintPass<'tcx> for RedundantValConversion {
+impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if expr.span.from_expansion() {
-            return;
-        }
-
-        let typeck = cx.typeck_results();
-        let expr_ty = typeck.expr_ty(expr).peel_refs();
-
-        if let hir::ExprKind::MethodCall(_path, receiver, _args, _span) = expr.kind {
-            if let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id) {
-                if match_soroban_def_path(cx, def_id, &["IntoVal", "into_val"])
-                    || match_soroban_def_path(cx, def_id, &["TryIntoVal", "try_into_val"])
-                {
-                    let receiver_ty = typeck.expr_ty(receiver).peel_refs();
-
-                    if is_same_type_ignoring_result(cx, receiver_ty, expr_ty) {
+        // Check for Symbol::new(&env, "literal") calls
+        if let hir::ExprKind::Call(callee, args) = expr.kind
+            && args.len() == 2
+            && let hir::ExprKind::Path(ref qpath) = callee.kind
+            && let Some(def_id) = cx.qpath_res(qpath, callee.hir_id).opt_def_id()
+            && match_soroban_def_path(cx, def_id, &["soroban_sdk", "Symbol", "new"])
+        {
+            // Check if the second argument is a string literal
+            if let hir::ExprKind::Lit(lit) = args[1].kind
+                && let LitKind::Str(symbol, _) = lit.node
+            {
+                let s = symbol.as_str();
+                if is_valid_short_symbol(s) {
+                    // Check if there's a valid suggestion
+                    if let Some(snippet) = snippet_opt(cx, args[1].span) {
+                        let suggestion = format!("symbol_short!({})", snippet);
+                        span_lint_and_sugg(
+                            cx,
+                            SYMBOL_NEW_FOR_SHORT_LITERAL,
+                            expr.span,
+                            "Symbol::new called with a short literal that could use symbol_short! macro",
+                            "use symbol_short! macro for compile-time symbol creation",
+                            suggestion,
+                            Applicability::MachineApplicable,
+                        );
+                    } else {
                         span_lint_and_help(
                             cx,
-                            REDUNDANT_VAL_CONVERSION,
+                            SYMBOL_NEW_FOR_SHORT_LITERAL,
                             expr.span,
-                            "redundant conversion to the same type",
+                            "Symbol::new called with a short literal that could use symbol_short! macro",
                             None,
-                            "remove this conversion since the value is already the target type",
+                            "use symbol_short! macro for compile-time symbol creation",
                         );
-                        return;
-                    }
-
-                    if let Some(source_ty) = get_inner_conversion_source_type(cx, receiver) {
-                        if is_same_type_ignoring_result(cx, source_ty, expr_ty) {
-                            span_lint_and_help(
-                                cx,
-                                REDUNDANT_VAL_CONVERSION,
-                                expr.span,
-                                "redundant round-trip conversion",
-                                None,
-                                "remove these conversions and use the original value directly",
-                            );
-                            return;
-                        }
-                    }
-                }
-            }
-        } else if let hir::ExprKind::Call(path_expr, args) = expr.kind {
-            if let hir::ExprKind::Path(ref qpath) = path_expr.kind {
-                if let Some(def_id) = cx.qpath_res(qpath, path_expr.hir_id).opt_def_id() {
-                    if match_soroban_def_path(cx, def_id, &["FromVal", "from_val"])
-                        || match_soroban_def_path(cx, def_id, &["TryFromVal", "try_from_val"])
-                    {
-                        if args.len() >= 2 {
-                            let source_arg = &args[1];
-                            let source_ty = typeck.expr_ty(source_arg).peel_refs();
-
-                            if is_same_type_ignoring_result(cx, source_ty, expr_ty) {
-                                span_lint_and_help(
-                                    cx,
-                                    REDUNDANT_VAL_CONVERSION,
-                                    expr.span,
-                                    "redundant conversion to the same type",
-                                    None,
-                                    "remove this conversion since the value is already the target type",
-                                );
-                                return;
-                            }
-
-                            if let Some(inner_source_ty) =
-                                get_inner_conversion_source_type(cx, source_arg)
-                            {
-                                if is_same_type_ignoring_result(cx, inner_source_ty, expr_ty) {
-                                    span_lint_and_help(
-                                        cx,
-                                        REDUNDANT_VAL_CONVERSION,
-                                        expr.span,
-                                        "redundant round-trip conversion",
-                                        None,
-                                        "remove these conversions and use the original value directly",
-                                    );
-                                    return;
-                                }
-                            }
-                        }
                     }
                 }
             }
         }
     }
+}
+
+/// Check if a string is a valid short symbol (<= 9 chars, only a-zA-Z0-9_)
+fn is_valid_short_symbol(s: &str) -> bool {
+    if s.len() > 9 || s.is_empty() {
+        return false;
+    }
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 #[test]
