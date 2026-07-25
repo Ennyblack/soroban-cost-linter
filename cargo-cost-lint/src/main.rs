@@ -154,18 +154,12 @@ fn main() {
                 Ok(config_str) => match toml::from_str::<BudgetConfig>(&config_str) {
                     Ok(config) => lint_config_to_flags(&config.lints, LINT_NAMES),
                     Err(e) => {
-                        eprintln!(
-                            "Warning: failed to parse {}: {}",
-                            config_path, e
-                        );
+                        eprintln!("Warning: failed to parse {}: {}", config_path, e);
                         Vec::new()
                     }
                 },
                 Err(e) => {
-                    eprintln!(
-                        "Warning: could not read {}: {}",
-                        config_path, e
-                    );
+                    eprintln!("Warning: could not read {}: {}", config_path, e);
                     Vec::new()
                 }
             }
@@ -566,7 +560,10 @@ mod tests {
         let mut lints = std::collections::HashMap::new();
         lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
         lints.insert("unknown_lint".to_string(), "warn".to_string());
-        lints.insert("redundant_env_clone".to_string(), "invalid_level".to_string());
+        lints.insert(
+            "redundant_env_clone".to_string(),
+            "invalid_level".to_string(),
+        );
         let known = &["soroban_storage_in_loop", "redundant_env_clone"];
         let flags = lint_config_to_flags(&Some(lints), known);
         assert_eq!(flags.len(), 1);
