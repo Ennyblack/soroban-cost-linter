@@ -56,6 +56,15 @@ jobs:
         run: cargo +${{ matrix.toolchain }} install cargo-dylint dylint-link --version "^6.0.1"
       - name: Run tests
         run: cargo +${{ matrix.toolchain }} test --workspace
+        env:
+          UPDATE_EXPECT: 1
+      - name: Commit changes
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add soroban_cost_lints/ui/*.stderr || true
+          git commit -m "chore: auto-update stderr files" || true
+          git push || true
 
   lint:
     needs: lint-matrix
