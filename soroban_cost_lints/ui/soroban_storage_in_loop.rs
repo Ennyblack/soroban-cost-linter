@@ -70,7 +70,7 @@ fn bad_storage_in_loop_loop(env: Env) {
 
 fn bad_storage_in_nested_loop(env: Env) {
     for i in 0..5 {
-        for j in 0..5 {
+        for _ in 0..5 {
             env.storage().instance().has(&i); // Should Warn
         }
     }
