@@ -1,30 +1,51 @@
 #![allow(unused)]
 #![warn(redundant_val_conversion)]
 
+pub mod soroban_sdk {
+    pub struct Env;
+    pub struct Val;
+
+    pub trait IntoVal<E, V> {
+        fn into_val(&self, env: &E) -> V;
+    }
+
+    pub trait TryFromVal<E, V> {
+        type Error;
+        fn try_from_val(env: &E, v: &V) -> Result<Self, Self::Error> where Self: Sized;
+    }
+
+    impl IntoVal<Env, Val> for u32 {
+        fn into_val(&self, _env: &Env) -> Val { Val }
+    }
+
+    impl TryFromVal<Env, Val> for u32 {
+        type Error = ();
+        fn try_from_val(_env: &Env, _v: &Val) -> Result<Self, Self::Error> { Ok(0) }
+    }
+    
+    impl IntoVal<Env, u32> for u32 {
+        fn into_val(&self, _env: &Env) -> u32 { *self }
+    }
+}
+
 use soroban_sdk::{Env, Val, IntoVal, TryFromVal};
 
 fn flag_same_type(env: Env, num: u32) {
-    // Should warn: redundant conversion to the same type
-    let _ = num.into_val(&env); // But wait, trait IntoVal in stub returns `u32` for `num`? 
-    // Yes, we implemented `IntoVal<Env, u32>` for `u32`, so `num.into_val` could resolve to that, but the compiler might complain about ambiguity without type annotations.
+    let _: u32 = num.into_val(&env); // Should warn
 }
 
 fn flag_round_trip(env: Env, num: u32) {
-    // Should warn: redundant round-trip conversion
-    let val: Val = num.into_val(&env);
-    // actually inline:
-    let _ = u32::try_from_val(&env, &num.into_val(&env));
+    let _: Result<u32, ()> = u32::try_from_val(&env, &num.into_val(&env)); // Should warn
 }
 
 fn good_valid_conversion(env: Env, num: u32) {
-    // Good: u32 -> Val
     let _val: Val = num.into_val(&env);
 }
 
 #[allow(redundant_val_conversion)]
 fn allowed_round_trip(env: Env, num: u32) {
-    // Good (allowed)
-    let _ = u32::try_from_val(&env, &num.into_val(&env));
+    let _: Result<u32, ()> = u32::try_from_val(&env, &num.into_val(&env)); // Good (allowed)
 }
 
 fn main() {}
+

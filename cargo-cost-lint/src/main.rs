@@ -49,7 +49,11 @@ struct Cli {
     #[arg(short, long, help = "Package to check")]
     package: Option<String>,
 
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, help = "Arguments to pass to cargo dylint")]
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        help = "Arguments to pass to cargo dylint"
+    )]
     passthrough: Vec<String>,
 }
 
