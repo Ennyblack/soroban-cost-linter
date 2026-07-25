@@ -21,13 +21,11 @@ This section provides detailed documentation for all lints supported by `soroban
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
 
-## Lint inventory schema
+## Symbol Operations
 
-The CLI can emit a versioned inventory of all registered lints via `cargo cost-lint --list-lints --format json`. The payload contains:
-
-- `version`: inventory schema version (`1.0`)
-- `schema`: the schema documentation URL
-- `lints`: an array of entries containing `name`, `default_level`, `description`, `category`, and `documentation_url`
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
