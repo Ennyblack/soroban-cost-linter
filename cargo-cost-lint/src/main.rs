@@ -50,9 +50,6 @@ struct Cli {
 
 #[derive(Deserialize, Debug)]
 struct BudgetConfig {
-    // Reserved for budget.toml lint-level overrides; the validation logic
-    // that reads this is a pre-existing stub, unrelated to .lintignore.
-    #[allow(dead_code)]
     lints: Option<std::collections::HashMap<String, String>>,
 }
 
@@ -87,6 +84,55 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
+/// Translates `[lints]` entries from `budget.toml` into `-A`/`-W`/`-D` flags
+/// for `DYLINT_RUSTFLAGS`.
+///
+/// Each entry maps a lint name to a severity level:
+/// - `"allow"` → `-A lint_name` (allow the lint)
+/// - `"warn"`  → `-W lint_name` (warn on the lint)
+/// - `"deny"`  → `-D lint_name` (deny the lint)
+///
+/// Unknown lint names and unknown levels are skipped with a warning printed
+/// to stderr. A `None` or empty `[lints]` table returns an empty vector,
+/// falling back to each lint's built-in default severity.
+fn lint_config_to_flags(
+    lints: &Option<std::collections::HashMap<String, String>>,
+    known_lints: &[&str],
+) -> Vec<String> {
+    let Some(lints_map) = lints else {
+        return Vec::new();
+    };
+
+    let known: HashSet<&str> = known_lints.iter().copied().collect();
+    let mut flags = Vec::new();
+
+    for (lint_name, level) in lints_map {
+        if !known.contains(lint_name.as_str()) {
+            eprintln!(
+                "Warning: unknown lint '{}' in budget.toml — skipping",
+                lint_name
+            );
+            continue;
+        }
+
+        let flag = match level.as_str() {
+            "allow" => format!("-A {lint_name}"),
+            "warn" => format!("-W {lint_name}"),
+            "deny" => format!("-D {lint_name}"),
+            _ => {
+                eprintln!(
+                    "Warning: unknown lint level '{}' for '{}' in budget.toml — skipping",
+                    level, lint_name
+                );
+                continue;
+            }
+        };
+        flags.push(flag);
+    }
+
+    flags
+}
+
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
@@ -102,17 +148,34 @@ fn main() {
 
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags: Vec<String> = Vec::new();
-    if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
+    let lint_flags = match &cli.config {
+        Some(config_path) if Path::new(config_path).exists() => {
+            match fs::read_to_string(config_path) {
+                Ok(config_str) => match toml::from_str::<BudgetConfig>(&config_str) {
+                    Ok(config) => lint_config_to_flags(&config.lints, LINT_NAMES),
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: failed to parse {}: {}",
+                            config_path, e
+                        );
+                        Vec::new()
+                    }
+                },
+                Err(e) => {
+                    eprintln!(
+                        "Warning: could not read {}: {}",
+                        config_path, e
+                    );
+                    Vec::new()
                 }
             }
         }
-    }
+        Some(config_path) => {
+            eprintln!("Warning: config file '{}' not found", config_path);
+            Vec::new()
+        }
+        None => Vec::new(),
+    };
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
@@ -425,5 +488,90 @@ mod tests {
     fn is_reportable_keeps_empty_file_field() {
         let allowed: HashSet<PathBuf> = HashSet::new();
         assert!(is_reportable("", &allowed));
+    }
+
+    // ── lint_config_to_flags tests ──────────────────────────────────────
+
+    #[test]
+    fn level_allow_maps_to_a_flag() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "allow".to_string());
+        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
+        assert_eq!(flags, vec!["-A soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn level_warn_maps_to_w_flag() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
+        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
+        assert_eq!(flags, vec!["-W soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn level_deny_maps_to_d_flag() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
+        assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
+    }
+
+    #[test]
+    fn unknown_level_is_skipped() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "invalid".to_string());
+        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn unknown_lint_name_is_skipped() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("nonexistent_lint".to_string(), "deny".to_string());
+        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn missing_config_none_returns_empty() {
+        let flags = lint_config_to_flags(&None, &["soroban_storage_in_loop"]);
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn empty_lints_table_returns_empty() {
+        let lints = Some(std::collections::HashMap::new());
+        let flags = lint_config_to_flags(&lints, &["soroban_storage_in_loop"]);
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn multiple_valid_lints_produce_multiple_flags() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
+        let known = &[
+            "soroban_storage_in_loop",
+            "redundant_env_clone",
+            "unnecessary_host_function_call",
+        ];
+        let flags = lint_config_to_flags(&Some(lints), known);
+        assert_eq!(flags.len(), 2);
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+    }
+
+    #[test]
+    fn mixed_valid_and_invalid_only_produces_valid_flags() {
+        let mut lints = std::collections::HashMap::new();
+        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
+        lints.insert("unknown_lint".to_string(), "warn".to_string());
+        lints.insert("redundant_env_clone".to_string(), "invalid_level".to_string());
+        let known = &["soroban_storage_in_loop", "redundant_env_clone"];
+        let flags = lint_config_to_flags(&Some(lints), known);
+        assert_eq!(flags.len(), 1);
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+        assert!(!flags.contains(&"-W unknown_lint".to_string()));
+        assert!(!flags.contains(&"-W redundant_env_clone".to_string()));
     }
 }
