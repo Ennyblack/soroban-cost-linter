@@ -49,7 +49,11 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
 
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true, help = "Arguments to pass to cargo dylint")]
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        help = "Arguments to pass to cargo dylint"
+    )]
     passthrough: Vec<String>,
 }
 
