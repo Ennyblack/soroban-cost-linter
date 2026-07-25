@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `discarded_storage_read` lint — detects storage `get` calls whose result is discarded or bound to `_`.
+
 ## [0.1.1]
 
 ### Changed

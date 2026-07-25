@@ -51,6 +51,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: HOST_IN_LOOP,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: DISCARDED_STORAGE_READ,
+        category: LintCategory::StorageOperations,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -60,11 +64,13 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
+        DISCARDED_STORAGE_READ,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
+    lint_store.register_late_pass(|_| Box::new(DiscardedStorageRead));
 }
 
 rustc_session::declare_lint! {
@@ -214,6 +220,70 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
                     "use of Host object inside a loop",
                     None,
                     "consider moving the Host usage outside the loop if possible",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// discarded_storage_read
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub DISCARDED_STORAGE_READ,
+    Warn,
+    "storage read whose result is discarded or bound to a wildcard"
+}
+
+pub struct DiscardedStorageRead;
+rustc_session::impl_lint_pass!(DiscardedStorageRead => [DISCARDED_STORAGE_READ]);
+
+impl<'tcx> LateLintPass<'tcx> for DiscardedStorageRead {
+    fn check_stmt(&mut self, cx: &LateContext<'tcx>, stmt: &'tcx hir::Stmt<'tcx>) {
+        if let hir::StmtKind::Semi(expr) = stmt.kind {
+            self.check_get_discarded(cx, expr);
+        }
+    }
+
+    fn check_local(&mut self, cx: &LateContext<'tcx>, local: &'tcx hir::LetStmt<'tcx>) {
+        if let hir::PatKind::Wild = local.pat.kind {
+            if let Some(init) = local.init {
+                self.check_get_discarded(cx, init);
+            }
+        }
+    }
+}
+
+impl DiscardedStorageRead {
+    fn check_get_discarded<'tcx>(
+        &self,
+        cx: &LateContext<'tcx>,
+        expr: &'tcx hir::Expr<'tcx>,
+    ) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "get"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_storage_get = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                match_soroban_def_path(cx, did, &["soroban_sdk", "storage", "Instance"])
+                    || match_soroban_def_path(cx, did, &["soroban_sdk", "storage", "Persistent"])
+                    || match_soroban_def_path(cx, did, &["soroban_sdk", "storage", "Temporary"])
+            } else {
+                false
+            };
+
+            if is_storage_get {
+                span_lint_and_help(
+                    cx,
+                    DISCARDED_STORAGE_READ,
+                    expr.span,
+                    "storage read result is discarded or bound to `_`",
+                    None,
+                    "use `has()` to check existence, or bind and use the result",
                 );
             }
         }

@@ -4,9 +4,10 @@ This section provides detailed documentation for all lints supported by `soroban
 
 ## Storage Operations
 
-| Lint                                                                  | Default Severity | Catches                                    |
-| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
+| Lint                                                                  | Default Severity | Catches                                          |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------------ |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies          |
+| [`discarded_storage_read`](discarded_storage_read.md)                 | `warn`           | Storage reads whose result is discarded or unused |
 
 ## CPU/Compute
 

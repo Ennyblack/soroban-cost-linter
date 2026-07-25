@@ -142,4 +142,75 @@ fn allowed_host_call_in_loop(env: Env) {
     }
 }
 
+// =======================================================================
+// discarded_storage_read — Fixtures
+// =======================================================================
+
+fn bad_instance_get_discarded(env: Env) {
+    let _key: i32 = 1;
+    env.storage().instance().get::<i32, i32>(&_key); // Should Warn
+}
+
+fn bad_persistent_get_discarded(env: Env) {
+    let _key: i32 = 1;
+    env.storage().persistent().get::<i32, i32>(&_key); // Should Warn
+}
+
+fn bad_temporary_get_discarded(env: Env) {
+    let _key: i32 = 1;
+    env.storage().temporary().get::<i32, i32>(&_key); // Should Warn
+}
+
+fn bad_instance_get_wildcard(env: Env) {
+    let _key: i32 = 1;
+    let _ = env.storage().instance().get::<i32, i32>(&_key); // Should Warn
+}
+
+fn bad_persistent_get_wildcard(env: Env) {
+    let _key: i32 = 1;
+    let _ = env.storage().persistent().get::<i32, i32>(&_key); // Should Warn
+}
+
+fn bad_temporary_get_wildcard(env: Env) {
+    let _key: i32 = 1;
+    let _ = env.storage().temporary().get::<i32, i32>(&_key); // Should Warn
+}
+
+fn good_has_check(env: Env) {
+    let _key: i32 = 1;
+    let _exists = env.storage().instance().has(&_key); // Good — has is intentional
+}
+
+fn good_get_used_in_if_let(env: Env) {
+    let _key: i32 = 1;
+    if let Some(_val) = env.storage().instance().get::<i32, i32>(&_key) {
+        // Good — result is consumed
+    }
+}
+
+fn good_get_result_used(env: Env) {
+    let _key: i32 = 1;
+    let val: Option<i32> = env.storage().persistent().get(&_key);
+    let _ = val; // Good — result is bound and read
+}
+
+fn good_get_is_some(env: Env) {
+    let _key: i32 = 1;
+    if env.storage().instance().get::<i32, i32>(&_key).is_some() {
+        // Good — used to prove existence
+    }
+}
+
+#[allow(discarded_storage_read)]
+fn allowed_instance_get_discarded(env: Env) {
+    let _key: i32 = 1;
+    env.storage().instance().get::<i32, i32>(&_key); // Good (allowed)
+}
+
+#[allow(discarded_storage_read)]
+fn allowed_instance_get_wildcard(env: Env) {
+    let _key: i32 = 1;
+    let _ = env.storage().instance().get::<i32, i32>(&_key); // Good (allowed)
+}
+
 fn main() {}
