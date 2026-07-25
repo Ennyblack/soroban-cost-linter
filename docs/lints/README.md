@@ -13,6 +13,7 @@ This section provides detailed documentation for all lints supported by `soroban
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | Redundant host function calls inside loops |
+| [`redundant_val_conversion`](redundant_val_conversion.md)             | `warn`           | Unnecessary or round-trip `Val` conversions |
 
 ## Memory
 
