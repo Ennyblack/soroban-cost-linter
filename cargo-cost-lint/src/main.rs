@@ -37,6 +37,9 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
+    #[arg(long, help = "Emit the lint inventory and exit")]
+    list_lints: bool,
+
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
 }
@@ -47,6 +50,7 @@ struct BudgetConfig {
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 
 fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
     let mut lint_flags = Vec::new();
@@ -104,6 +108,18 @@ fn main() {
             exit(1);
         }
     };
+
+    if cli.list_lints {
+        if cli.format == OutputFormat::Json {
+            println!("{}", serde_json::to_string_pretty(&LINT_INVENTORY).unwrap());
+        } else {
+            println!("Lint inventory (version {}):", LINT_INVENTORY.version);
+            for lint in LINT_INVENTORY.lints {
+                println!("{} | {} | {} | {}", lint.name, lint.default_level, lint.category, lint.documentation_url);
+            }
+        }
+        return;
+    }
 
     let mut lint_flags = Vec::new();
 
@@ -276,6 +292,19 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lint_metadata_matches_registered_lints() {
+        let registered_names = LINT_NAMES.iter().copied().collect::<std::collections::HashSet<_>>();
+        let inventory_names = LINT_INVENTORY
+            .lints
+            .iter()
+            .map(|lint| lint.name)
+            .collect::<std::collections::HashSet<_>>();
+
+        assert_eq!(registered_names, inventory_names);
+        assert_eq!(LINT_INVENTORY.version, "1.0");
+    }
 
     #[test]
     fn test_valid_config() {
