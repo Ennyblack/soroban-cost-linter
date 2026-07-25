@@ -107,21 +107,23 @@ fn main() {
 
     let mut lint_flags = Vec::new();
 
-    if let Some(ref path) = resolve_config(cli.config.as_deref()) {
+    let config_path = resolve_config(cli.config.as_deref());
+
+    if let Some(ref path) = config_path
+        && let Ok(config_str) = fs::read_to_string(path)
+        && let Ok(config) = toml::from_str::<BudgetConfig>(&config_str)
+    {
         eprintln!("Using config: {}", path.display());
-        if let Ok(config_str) = fs::read_to_string(path) {
-            if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                match validate_and_build_flags(&config) {
-                    Ok(flags) => lint_flags = flags,
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        exit(1);
-                    }
-                }
-            } else {
-                eprintln!("Warning: Failed to parse {}", path.display());
+        match validate_and_build_flags(&config) {
+            Ok(flags) => lint_flags = flags,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
             }
         }
+    } else if let Some(path) = config_path.as_ref() {
+        eprintln!("Using config: {}", path.display());
+        eprintln!("Warning: Failed to parse {}", path.display());
     } else {
         eprintln!("Warning: budget.toml not found, using default lint levels.");
     }
