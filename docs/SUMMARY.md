@@ -2,6 +2,10 @@
 
 * [Introduction](README.md)
 
+## Concepts
+
+* [Cost Rationale](cost_rationale.md)
+
 ## Guides
 
 * [Scope: Clippy vs. soroban-cost-linter](scope_boundary.md)
