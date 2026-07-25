@@ -247,20 +247,16 @@ impl<'tcx> LateLintPass<'tcx> for DiscardedStorageRead {
     }
 
     fn check_local(&mut self, cx: &LateContext<'tcx>, local: &'tcx hir::LetStmt<'tcx>) {
-        if let hir::PatKind::Wild = local.pat.kind {
-            if let Some(init) = local.init {
-                self.check_get_discarded(cx, init);
-            }
+        if let hir::PatKind::Wild = local.pat.kind
+            && let Some(init) = local.init
+        {
+            self.check_get_discarded(cx, init);
         }
     }
 }
 
 impl DiscardedStorageRead {
-    fn check_get_discarded<'tcx>(
-        &self,
-        cx: &LateContext<'tcx>,
-        expr: &'tcx hir::Expr<'tcx>,
-    ) {
+    fn check_get_discarded<'tcx>(&self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
             && path_segment.ident.name.as_str() == "get"
         {
