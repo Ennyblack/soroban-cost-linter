@@ -8,9 +8,10 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 ## Storage Operations
 
-| Lint                                                                  | Default Severity | Catches                                    |
-| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
+| Lint                                                                          | Default Severity | Catches                                                              |
+| ----------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------- |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)                       | `warn`           | Storage reads/writes inside loop bodies                              |
+| [`loop_invariant_storage_access`](loop_invariant_storage_access.md)           | `warn`           | Storage reads/writes in loops with provably invariant operands       |
 
 ## CPU/Compute
 
