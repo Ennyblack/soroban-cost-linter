@@ -39,6 +39,18 @@ struct Cli {
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
+
+    #[arg(long, help = "Path to Cargo.toml")]
+    manifest_path: Option<String>,
+
+    #[arg(long, help = "Build all packages in the workspace")]
+    workspace: bool,
+
+    #[arg(short, long, help = "Package to check")]
+    package: Option<String>,
+
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true, help = "Arguments to pass to cargo dylint")]
+    passthrough: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
