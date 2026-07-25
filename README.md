@@ -110,6 +110,12 @@ LL |     let _cloned = env.clone();
    |                   ^^^^^^^^^^^
    = help: pass Env by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
+
+lint summary:
+  redundant_env_clone: 1
+  soroban_storage_in_loop: 3
+  unnecessary_host_function_call: 2
+total: 6
 ```
 
 ### Example: storage in a loop
