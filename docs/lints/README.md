@@ -10,9 +10,10 @@ This section provides detailed documentation for all lints supported by `soroban
 
 ## CPU/Compute
 
-| Lint                                                                  | Default Severity | Catches                                    |
-| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | Redundant host function calls inside loops |
+| Lint                                                                                      | Default Severity | Catches                                                    |
+| ----------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------- |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md)                     | `warn`           | Redundant host function calls inside loops                 |
+| [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md)                 | `warn`           | Metered `.len()` calls on collections inside loops         |
 
 ## Memory
 

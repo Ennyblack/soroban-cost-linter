@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+
+- `collection_len_in_loop_condition` lint: detects metered `.len()` calls on Soroban collection types (`Vec`, `Map`, `Set`) inside loops when the collection is not mutated.
+
 ## [0.1.1]
 
 ### Changed

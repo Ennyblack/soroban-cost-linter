@@ -51,6 +51,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: HOST_IN_LOOP,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: COLLECTION_LEN_IN_LOOP_CONDITION,
+        category: LintCategory::Compute,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -60,11 +64,13 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
+        COLLECTION_LEN_IN_LOOP_CONDITION,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
+    lint_store.register_late_pass(|_| Box::new(CollectionLenInLoopCondition));
 }
 
 rustc_session::declare_lint! {
@@ -214,6 +220,116 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
                     "use of Host object inside a loop",
                     None,
                     "consider moving the Host usage outside the loop if possible",
+                );
+            }
+        }
+    }
+}
+
+rustc_session::declare_lint! {
+    pub COLLECTION_LEN_IN_LOOP_CONDITION,
+    Warn,
+    "len() called on Soroban collection inside a loop"
+}
+pub struct CollectionLenInLoopCondition;
+rustc_session::impl_lint_pass!(CollectionLenInLoopCondition => [COLLECTION_LEN_IN_LOOP_CONDITION]);
+
+const MUTATION_METHODS: &[&str] = &[
+    "push",
+    "pop",
+    "insert",
+    "set",
+    "remove",
+    "clear",
+    "truncate",
+    "swap_remove",
+];
+
+impl CollectionLenInLoopCondition {
+    fn is_soroban_collection<'tcx>(
+        &self,
+        cx: &LateContext<'tcx>,
+        adt_def: &rustc_middle::ty::AdtDef<'tcx>,
+    ) -> bool {
+        let did = adt_def.did();
+        match_soroban_def_path(cx, did, &["soroban_sdk", "Vec"])
+            || match_soroban_def_path(cx, did, &["soroban_sdk", "Map"])
+            || match_soroban_def_path(cx, did, &["soroban_sdk", "Set"])
+    }
+
+    fn has_mutation_in_loop<'tcx>(
+        &self,
+        cx: &LateContext<'tcx>,
+        receiver: &'tcx hir::Expr<'tcx>,
+        body: &'tcx hir::Block<'tcx>,
+    ) -> bool {
+        if let hir::ExprKind::Path(hir::QPath::Resolved(_, path)) = receiver.kind
+            && let hir::def::Res::Local(local_id) = path.res
+        {
+            struct MutationFinder<'a, 'tcx> {
+                cx: &'a LateContext<'tcx>,
+                local_id: hir::def_id::LocalDefId,
+                found: bool,
+            }
+
+            impl<'a, 'tcx> hir::intravisit::Visitor<'tcx> for MutationFinder<'a, 'tcx> {
+                fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+                    if self.found {
+                        return;
+                    }
+                    if let hir::ExprKind::MethodCall(path_segment, call_receiver, _, _) = expr.kind
+                        && let hir::ExprKind::Path(hir::QPath::Resolved(_, call_path)) =
+                            call_receiver.kind
+                        && let hir::def::Res::Local(call_local) = call_path.res
+                        && call_local == self.local_id
+                        && MUTATION_METHODS.contains(&path_segment.ident.name.as_str())
+                    {
+                        self.found = true;
+                        return;
+                    }
+                    hir::intravisit::walk_expr(self, expr);
+                }
+            }
+
+            let mut visitor = MutationFinder {
+                cx,
+                local_id,
+                found: false,
+            };
+            hir::intravisit::walk_block(&mut visitor, body);
+            visitor.found
+        } else {
+            false
+        }
+    }
+}
+
+impl<'tcx> LateLintPass<'tcx> for CollectionLenInLoopCondition {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "len"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_collection = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                self.is_soroban_collection(cx, adt_def)
+            } else {
+                false
+            };
+
+            if is_collection
+                && let Some(enclosing_expr) = get_enclosing_loop_or_multi_call_closure(cx, expr)
+                && let hir::ExprKind::Loop(loop_block, _, _, _) = enclosing_expr.kind
+                && !self.has_mutation_in_loop(cx, receiver, loop_block)
+            {
+                span_lint_and_help(
+                    cx,
+                    COLLECTION_LEN_IN_LOOP_CONDITION,
+                    expr.span,
+                    "len() called on Soroban collection inside a loop",
+                    None,
+                    "bind the collection length before the loop to avoid repeated metered host calls",
                 );
             }
         }
