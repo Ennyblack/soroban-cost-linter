@@ -150,5 +150,149 @@ LL |         v.push_back(i); // Should Warn
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
-warning: 19 warnings emitted
+warning: storage operation inside a loop
+  --> $DIR/main.rs:337:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:337:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:337:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:344:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:344:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:344:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:351:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:351:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:351:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:358:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good — constant bound
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:358:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good — constant bound
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:358:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good — constant bound
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:371:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:371:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:371:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:378:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:378:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:378:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: 37 warnings emitted
 

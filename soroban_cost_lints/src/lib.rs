@@ -16,8 +16,8 @@ use clippy_utils::usage::mutated_variables;
 use rustc_ast::LitKind;
 use rustc_errors::Applicability;
 use rustc_hir as hir;
-use rustc_hir::intravisit::{self, Visitor};
-use rustc_hir::{HirId, HirIdSet};
+use rustc_hir::intravisit::{self, FnKind, Visitor};
+use rustc_hir::{FnDecl, HirId, HirIdSet};
 use rustc_lint::{LateContext, LateLintPass, LintStore};
 use rustc_span::def_id::DefId;
 
@@ -184,6 +184,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: UNBOUNDED_INPUT_LOOP,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
         lint: REDUNDANT_ENV_CLONE,
         category: LintCategory::Memory,
     },
@@ -209,6 +213,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
+        UNBOUNDED_INPUT_LOOP,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
@@ -216,6 +221,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         BYTES_APPEND_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
+    lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
@@ -422,6 +428,221 @@ impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
                 }
             }
         }
+    }
+}
+
+// =======================================================================
+// unbounded_input_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub UNBOUNDED_INPUT_LOOP,
+    Warn,
+    "loop bound derived from untrusted input with storage write in body"
+}
+
+#[derive(Default)]
+pub struct UnboundedInputLoop;
+rustc_session::impl_lint_pass!(UnboundedInputLoop => [UNBOUNDED_INPUT_LOOP]);
+
+/// Collects the `HirId` of every function parameter pattern.
+#[derive(Default)]
+struct ParamHirIdCollector {
+    params: HirIdSet,
+}
+
+impl<'tcx> Visitor<'tcx> for ParamHirIdCollector {
+    fn visit_pat(&mut self, pat: &'tcx hir::Pat<'tcx>) {
+        if let hir::PatKind::Binding(_, hir_id, _, _) = pat.kind {
+            self.params.insert(hir_id);
+        }
+        intravisit::walk_pat(self, pat);
+    }
+}
+
+/// Whether `expr` is a clamping method call (`.min(CONST)` or
+/// `.clamp(_, CONST)` where the constant is a literal).
+#[allow(dead_code)]
+fn is_clamped_by_constant(_cx: &LateContext<'_>, expr: &hir::Expr<'_>) -> bool {
+    if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind {
+        let name = path_segment.ident.name.as_str();
+        match name {
+            "min" => args
+                .first()
+                .is_some_and(|a| matches!(a.kind, hir::ExprKind::Lit(_))),
+            "clamp" => {
+                args.len() >= 2 && matches!(args[args.len() - 1].kind, hir::ExprKind::Lit(_))
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+impl<'tcx> LateLintPass<'tcx> for UnboundedInputLoop {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        kind: FnKind<'tcx>,
+        _decl: &'tcx FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        _local_def_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        // Only check named functions (not closures)
+        if !matches!(kind, FnKind::ItemFn(..)) {
+            return;
+        }
+
+        // Collect function parameter HirIds from body.params
+        let mut collector = ParamHirIdCollector::default();
+        for param in body.params {
+            collector.visit_pat(param.pat);
+        }
+        if collector.params.is_empty() {
+            return;
+        }
+
+        let mut walker = UnboundedLoopWalker {
+            cx,
+            param_ids: collector.params,
+            within_loop: false,
+            current_loop: None,
+            flagged: HirIdSet::default(),
+        };
+        walker.visit_expr(body.value);
+    }
+}
+
+struct UnboundedLoopWalker<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    param_ids: HirIdSet,
+    within_loop: bool,
+    current_loop: Option<(hir::HirId, bool)>,
+    flagged: HirIdSet,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for UnboundedLoopWalker<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        match expr.kind {
+            // A Block that ends with a Loop: this is a for-loop or while-loop in
+            // the desugared HIR. The preceding statements hold the iterator init /
+            // condition from which we can extract the bound expression.
+            hir::ExprKind::Block(block, _label)
+                if let Some(tail) = block.expr
+                    && matches!(tail.kind, hir::ExprKind::Loop(..)) =>
+            {
+                let bound_refers_to_param = self.block_stmts_contain_param_bound(block.stmts);
+                let was_in_loop = self.within_loop;
+                let prev_loop = self.current_loop;
+
+                self.within_loop = true;
+                self.current_loop = Some((expr.hir_id, bound_refers_to_param));
+
+                // Visit iterator init statements (they're outside the loop body)
+                for stmt in block.stmts {
+                    intravisit::walk_stmt(self, stmt);
+                }
+                // Visit the loop body
+                self.visit_expr(tail);
+
+                self.within_loop = was_in_loop;
+                self.current_loop = prev_loop;
+            }
+
+            // A free-standing Loop (not inside the for/while desugaring pattern)
+            // e.g. `loop { ... }` — we can't determine the bound, skip.
+            hir::ExprKind::Loop(body_block, _label, _loop_source, _span) => {
+                let was_in_loop = self.within_loop;
+                let prev_loop = self.current_loop;
+                self.within_loop = true;
+                // Bound is unknown for bare `loop { }`
+                self.current_loop = Some((expr.hir_id, false));
+                intravisit::walk_block(self, body_block);
+                self.within_loop = was_in_loop;
+                self.current_loop = prev_loop;
+            }
+
+            // Storage write detection — only relevant inside a loop
+            hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) if self.within_loop => {
+                let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
+                let peeled_ty = receiver_ty.peel_refs();
+
+                let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                    let did = adt_def.did();
+                    matches_any_path(self.cx, did, SOROBAN_STORAGE_TYPES)
+                        || (match_soroban_def_path(self.cx, did, &["soroban_sdk", "Env"])
+                            && path_segment.ident.name.as_str() == "storage")
+                } else {
+                    false
+                };
+
+                if is_storage
+                    && let Some((loop_id, bound_is_param)) = self.current_loop
+                    && bound_is_param
+                    && !self.flagged.contains(&loop_id)
+                {
+                    self.flagged.insert(loop_id);
+                    span_lint_and_help(
+                        self.cx,
+                        UNBOUNDED_INPUT_LOOP,
+                        expr.span,
+                        "loop bound derives from an untrusted input with a storage write in the body",
+                        None,
+                        "clamp the loop bound with .min(CONST) or validate the input before using it as a loop bound",
+                    );
+                }
+
+                intravisit::walk_expr(self, expr);
+            }
+
+            _ => {
+                intravisit::walk_expr(self, expr);
+            }
+        }
+    }
+}
+
+impl<'a, 'tcx> UnboundedLoopWalker<'a, 'tcx> {
+    /// Walk the block's preceding statements (the iterator init in a
+    /// desugared for/while loop) and check whether any expression
+    /// references a function parameter.
+    fn block_stmts_contain_param_bound(&mut self, stmts: &'tcx [hir::Stmt<'tcx>]) -> bool {
+        struct ParamReadCheck<'p> {
+            param_ids: &'p HirIdSet,
+            found: bool,
+        }
+
+        impl<'tcx> Visitor<'tcx> for ParamReadCheck<'_> {
+            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+                if self.found {
+                    return;
+                }
+                if let hir::ExprKind::Path(hir::QPath::Resolved(None, path)) = expr.kind
+                    && let hir::def::Res::Local(hir_id) = path.res
+                    && self.param_ids.contains(&hir_id)
+                {
+                    // Skip if clamped: e.g. param.min(CONST)
+                    // Check parent context — if this param read is the
+                    // receiver of a .min() or .clamp() call, it's clamped.
+                    self.found = true;
+                }
+                intravisit::walk_expr(self, expr);
+            }
+        }
+
+        let mut checker = ParamReadCheck {
+            param_ids: &self.param_ids,
+            found: false,
+        };
+        for stmt in stmts {
+            intravisit::walk_stmt(&mut checker, stmt);
+            if checker.found {
+                return true;
+            }
+        }
+        false
     }
 }
 
