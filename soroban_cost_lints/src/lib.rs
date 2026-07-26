@@ -19,6 +19,7 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{HirId, HirIdSet};
 use rustc_lint::{LateContext, LateLintPass, LintStore};
+use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 
 dylint_linting::dylint_library!();
@@ -84,6 +85,137 @@ fn matches_any_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, paths: &[&[&str
     paths
         .iter()
         .any(|segments| match_soroban_def_path(cx, def_id, segments))
+}
+
+fn match_soroban_def_path_tcx(tcx: TyCtxt<'_>, def_id: DefId, segments: &[&str]) -> bool {
+    let full = tcx.def_path_str(def_id);
+    let suffix: String = segments.join("::");
+    full.ends_with(&suffix)
+}
+
+fn matches_any_path_tcx(tcx: TyCtxt<'_>, def_id: DefId, paths: &[&[&str]]) -> bool {
+    paths
+        .iter()
+        .any(|segments| match_soroban_def_path_tcx(tcx, def_id, segments))
+}
+
+/// Maximum call depth for inter-procedural analysis. Functions reachable
+/// beyond this depth are not inspected; the analysis conservatively treats
+/// them as not containing the target operation.
+const MAX_CALL_DEPTH: u32 = 3;
+
+/// Whether the function identified by `def_id` — or any function it calls
+/// up to `depth_remaining` levels deep — performs a Soroban storage or host
+/// operation matching `target_paths`.
+///
+/// # Conservative posture
+///
+/// External crates (`!def_id.is_local()`), opaque calls (trait methods,
+/// function pointers, closures), cycle revisits, and exhausted depth all
+/// return `false`. This errs on the side of **not** flagging, so a
+/// cross-function lint never produces a false positive from incomplete
+/// information.
+fn callee_contains_soroban_op<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    target_paths: &[&[&str]],
+    depth_remaining: u32,
+    visited: &mut Vec<DefId>,
+) -> bool {
+    // External crate — we can't walk soroban-sdk or std
+    if !def_id.is_local() {
+        return false;
+    }
+    // Already visited in this call chain (cycle / recursion)
+    if visited.contains(&def_id) {
+        return false;
+    }
+    // Depth bound exhausted
+    if depth_remaining == 0 {
+        return false;
+    }
+
+    visited.push(def_id);
+
+    let local_def_id = def_id.expect_local();
+    let body_id = tcx
+        .hir_node_by_def_id(local_def_id)
+        .body_id()
+        .expect("callee has no body");
+    let body = tcx.hir_body(body_id);
+    let typeck = tcx.typeck(local_def_id);
+
+    let found = {
+        let mut detector = CalleeStorageDetector {
+            tcx,
+            typeck,
+            target_paths,
+            depth_remaining: depth_remaining - 1,
+            visited,
+            found: false,
+        };
+        detector.visit_expr(body.value);
+        detector.found
+    };
+
+    visited.pop();
+    found
+}
+
+/// Visitor that walks a callee body looking for direct storage/host method
+/// calls or nested calls that transitively reach one.
+struct CalleeStorageDetector<'a, 'tcx> {
+    tcx: TyCtxt<'tcx>,
+    typeck: &'tcx rustc_middle::ty::TypeckResults<'tcx>,
+    target_paths: &'a [&'a [&'a str]],
+    depth_remaining: u32,
+    visited: &'a mut Vec<DefId>,
+    found: bool,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for CalleeStorageDetector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if self.found {
+            return;
+        }
+
+        match expr.kind {
+            hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) => {
+                let receiver_ty = self.typeck.expr_ty(receiver);
+                let peeled_ty = receiver_ty.peel_refs();
+
+                if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                    let did = adt_def.did();
+                    if matches_any_path_tcx(self.tcx, did, self.target_paths)
+                        || (match_soroban_def_path_tcx(self.tcx, did, &["soroban_sdk", "Env"])
+                            && path_segment.ident.name.as_str() == "storage")
+                    {
+                        self.found = true;
+                        return;
+                    }
+                }
+            }
+            hir::ExprKind::Call(_callee, _args) => {
+                // Check whether this nested call transitively reaches a
+                // storage/host op.
+                if let Some(callee_def_id) = self.typeck.type_dependent_def_id(expr.hir_id)
+                    && callee_contains_soroban_op(
+                        self.tcx,
+                        callee_def_id,
+                        self.target_paths,
+                        self.depth_remaining,
+                        self.visited,
+                    )
+                {
+                    self.found = true;
+                    return;
+                }
+            }
+            _ => {}
+        }
+
+        intravisit::walk_expr(self, expr);
+    }
 }
 
 /// Collects the `HirId`s of every binding introduced inside the visited
@@ -233,6 +365,7 @@ rustc_session::impl_lint_pass!(SorobanStorageInLoop => [SOROBAN_STORAGE_IN_LOOP]
 
 impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // --- Direct storage access in a loop ---
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
             let receiver_ty = cx.typeck_results().expr_ty(receiver);
             let peeled_ty = receiver_ty.peel_refs();
@@ -252,6 +385,31 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     SOROBAN_STORAGE_IN_LOOP,
                     expr.span,
                     "storage operation inside a loop",
+                    None,
+                    "move storage operations out of the loop or accumulate mutations in memory first",
+                );
+            }
+        }
+
+        // --- Inter-procedural: call that transitively reaches storage ---
+        if let hir::ExprKind::Call(_callee, _args) = expr.kind
+            && enclosing_loop(cx, expr).is_some()
+        {
+            let mut visited: Vec<DefId> = Vec::new();
+            if let Some(callee_def_id) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
+                && callee_contains_soroban_op(
+                    cx.tcx,
+                    callee_def_id,
+                    SOROBAN_STORAGE_TYPES,
+                    MAX_CALL_DEPTH,
+                    &mut visited,
+                )
+            {
+                span_lint_and_help(
+                    cx,
+                    SOROBAN_STORAGE_IN_LOOP,
+                    expr.span,
+                    "storage operation inside a loop (reached through function call)",
                     None,
                     "move storage operations out of the loop or accumulate mutations in memory first",
                 );

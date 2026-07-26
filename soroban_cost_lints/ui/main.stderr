@@ -72,7 +72,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:180:19
+  --> $DIR/main.rs:215:19
    |
 LL |     let _cloned = env.clone(); // Should Warn
    |                   ^^^^^^^^^^^
@@ -81,7 +81,7 @@ LL |     let _cloned = env.clone(); // Should Warn
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:198:20
+  --> $DIR/main.rs:233:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -90,7 +90,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:219:21
+  --> $DIR/main.rs:254:21
    |
 LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same input every iteration
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -98,7 +98,7 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:241:18
+  --> $DIR/main.rs:276:18
    |
 LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -106,7 +106,7 @@ LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:247:21
+  --> $DIR/main.rs:282:21
    |
 LL |         let _addr = env.current_contract_address(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -114,7 +114,7 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:269:16
+  --> $DIR/main.rs:304:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -122,19 +122,19 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:273:16
+  --> $DIR/main.rs:308:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:281:16
+  --> $DIR/main.rs:316:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:313:9
+  --> $DIR/main.rs:348:9
    |
 LL |         bytes.append(&Bytes); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^
@@ -143,7 +143,7 @@ LL |         bytes.append(&Bytes); // Should Warn
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:321:9
+  --> $DIR/main.rs:356:9
    |
 LL |         v.push_back(i); // Should Warn
    |         ^^^^^^^^^^^^^^

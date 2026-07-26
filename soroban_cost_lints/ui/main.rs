@@ -173,6 +173,41 @@ fn allowed_storage_in_loop(env: Env) {
 }
 
 // =======================================================================
+// soroban_storage_in_loop — Inter-procedural Fixtures
+// =======================================================================
+
+fn persist(env: &Env) {
+    env.storage().instance().set(&"key", &42);
+}
+
+fn noop(_env: &Env) {
+    // nothing
+}
+
+fn bad_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Should Warn — callee performs storage
+    }
+}
+
+fn good_noop_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        noop(&env); // Good — callee does nothing costly
+    }
+}
+
+fn good_storage_through_call_outside_loop(env: Env) {
+    persist(&env); // Good — not inside a loop
+}
+
+#[allow(soroban_storage_in_loop)]
+fn allowed_storage_through_call_in_loop(env: Env) {
+    for _ in 0..10 {
+        persist(&env); // Good (allowed)
+    }
+}
+
+// =======================================================================
 // redundant_env_clone — Fixtures
 // =======================================================================
 
