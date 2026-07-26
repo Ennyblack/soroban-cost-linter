@@ -123,10 +123,9 @@ Each lint in this repository targets a specific resource dimension:
 
 - **Exact per-instruction CPU costs for every `ContractCostType`** — the calibrated model parameters (`a`, `b` for each cost type) are set by network consensus and are not published in developer-facing documentation. They can be inspected in the `rs-soroban-env` source repository[^6].
 - **Decomposed storage costs** — the ratio of "ledger entry access fee" to "I/O byte fee" is not specified independently. The total storage fee is what matters for linting, but measuring the split requires network simulation.
-- **Measured figures for each lint** — issue [#10] tracks adding specific measured savings (in CPU instructions and storage bytes) to individual lint pages. That work depends on measurements that do not yet exist.
 
 {% hint style="info" %}
-An honest "not yet measured" is more useful than a guess. When specific numbers become available from `soroban-budget-assert` measurements, they belong on the individual lint pages, not here.
+Local measurements are available in the [`cost_benchmarks`](https://github.com/Tollcraft/soroban-cost-linter/tree/main/cost_benchmarks) crate. Run `cargo test -- --nocapture` to see before/after budget deltas for each lint pattern on `Env::default()`. These numbers are **directional** (they show relative savings) but are subject to the [Local-vs-Network Gap](#the-local-vs-network-gap) described above.
 {% endhint %}
 
 ---
