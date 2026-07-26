@@ -17,44 +17,12 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:149:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:149:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
   --> $DIR/main.rs:156:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:156:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:156:30
-   |
-LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
-   |                              ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible
 
 warning: storage operation inside a loop
   --> $DIR/main.rs:163:12
@@ -62,23 +30,7 @@ warning: storage operation inside a loop
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:163:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:163:12
-   |
-LL |         if env.storage().temporary().has(&1) { // Should Warn
-   |            ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
+   = help: if the read is loop-invariant, hoist it out of the loop; otherwise batch where possible
 
 warning: storage write without a corresponding read
   --> $DIR/main.rs:170:30
@@ -147,7 +99,7 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:254:20
+  --> $DIR/main.rs:284:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn — called once per closure invocation
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -155,7 +107,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    = help: call this function outside the loop and reuse the result
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:299:16
+  --> $DIR/main.rs:306:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -163,19 +115,19 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:303:16
+  --> $DIR/main.rs:310:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:311:16
+  --> $DIR/main.rs:318:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:341:30
+  --> $DIR/main.rs:348:30
    |
 LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior read
    |                              ^^^^^^^^^^^^^^^^
@@ -183,7 +135,7 @@ LL |     env.storage().instance().set(&"key1", &1); // Should Warn — no prior 
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: inefficient bytes concatenation in a loop
-  --> $DIR/main.rs:366:18
+  --> $DIR/main.rs:373:18
    |
 LL |         result = result + Bytes::from("x"); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -192,7 +144,7 @@ LL |         result = result + Bytes::from("x"); // Should Warn
    = note: `#[warn(inefficient_bytes_concat)]` on by default
 
 warning: Map::insert inside a loop is expensive
-  --> $DIR/main.rs:393:9
+  --> $DIR/main.rs:400:9
    |
 LL |         map.insert(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^
@@ -201,7 +153,7 @@ LL |         map.insert(&i, &1); // Should Warn
    = note: `#[warn(map_insert_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:393:9
+  --> $DIR/main.rs:400:9
    |
 LL |         map.insert(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^
@@ -210,7 +162,7 @@ LL |         map.insert(&i, &1); // Should Warn
    = note: `#[warn(bytes_append_in_loop)]` on by default
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:409:9
+  --> $DIR/main.rs:416:9
    |
 LL |         map.insert(&i, &1); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^
@@ -218,7 +170,7 @@ LL |         map.insert(&i, &1); // Good (allowed)
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:420:9
+  --> $DIR/main.rs:427:9
    |
 LL |         bytes.append(&Bytes(vec![])); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -226,44 +178,12 @@ LL |         bytes.append(&Bytes(vec![])); // Should Warn
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: repeatedly growing SDK container inside a loop
-  --> $DIR/main.rs:428:9
+  --> $DIR/main.rs:435:9
    |
 LL |         v.push_back(i); // Should Warn
    |         ^^^^^^^^^^^^^^
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
-
-warning: storage write without a corresponding read
-  --> $DIR/main.rs:444:34
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |                                  ^^^^^^^^^^^
-   |
-   = help: consider reading the value before writing or using `.has()` to check existence
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:444:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:444:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:444:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage write without a corresponding read
   --> $DIR/main.rs:451:34
@@ -278,22 +198,6 @@ warning: storage operation inside a loop
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:451:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:451:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
@@ -313,26 +217,10 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
-warning: storage operation inside a loop
-  --> $DIR/main.rs:458:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:458:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Should Warn
-   |         ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
 warning: storage write without a corresponding read
   --> $DIR/main.rs:465:34
    |
-LL |         env.storage().instance().set(&i, &1); // Good — constant bound
+LL |         env.storage().instance().set(&i, &1); // Should Warn
    |                                  ^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
@@ -340,63 +228,31 @@ LL |         env.storage().instance().set(&i, &1); // Good — constant bound
 warning: storage operation inside a loop
   --> $DIR/main.rs:465:9
    |
-LL |         env.storage().instance().set(&i, &1); // Good — constant bound
+LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:465:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good — constant bound
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:465:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good — constant bound
-   |         ^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage write without a corresponding read
-  --> $DIR/main.rs:478:34
+  --> $DIR/main.rs:472:34
    |
-LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+LL |         env.storage().instance().set(&i, &1); // Good — constant bound
    |                                  ^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:478:9
+  --> $DIR/main.rs:472:9
    |
-LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+LL |         env.storage().instance().set(&i, &1); // Good — constant bound
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:478:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:478:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
-   |         ^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage write without a corresponding read
   --> $DIR/main.rs:485:34
    |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
    |                                  ^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
@@ -404,26 +260,26 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
 warning: storage operation inside a loop
   --> $DIR/main.rs:485:9
    |
+LL |         env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage write without a corresponding read
+  --> $DIR/main.rs:492:34
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |                                  ^^^^^^^^^^^
+   |
+   = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:492:9
+   |
 LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
-warning: storage operation inside a loop
-  --> $DIR/main.rs:485:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
-   |         ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: storage operation inside a loop
-  --> $DIR/main.rs:485:9
-   |
-LL |         env.storage().instance().set(&i, &1); // Good (allowed)
-   |         ^^^^^^^^^^^^^
-   |
-   = help: move storage operations out of the loop or accumulate mutations in memory first
-
-warning: 52 warnings emitted
+warning: 35 warnings emitted
 
