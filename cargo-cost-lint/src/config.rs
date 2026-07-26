@@ -15,10 +15,7 @@ impl Config {
             return Config::default();
         }
         match fs::read_to_string(path) {
-            Ok(content) => match toml::from_str::<Config>(&content) {
-                Ok(config) => config,
-                Err(_) => Config::default(),
-            },
+            Ok(content) => toml::from_str::<Config>(&content).unwrap_or_default(),
             Err(_) => Config::default(),
         }
     }
@@ -85,4 +82,4 @@ soroban_storage_in_loop = "deny"
         let config = Config::default();
         assert!(config.lints.is_none());
     }
-}
+}
