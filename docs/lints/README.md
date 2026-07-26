@@ -8,10 +8,11 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 
 ## Storage Operations
 
-| Lint                                                                          | Default Severity | Catches                                                              |
-| ----------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------- |
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)                       | `warn`           | Storage reads/writes inside loop bodies                              |
-| [`loop_invariant_storage_access`](loop_invariant_storage_access.md)           | `warn`           | Storage reads/writes in loops with provably invariant operands       |
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
+| [`storage_write_without_read`](storage_write_without_read.md)         | `warn`           | Storage writes without a corresponding read |
+| [`map_insert_in_loop`](map_insert_in_loop.md)                         | `warn`           | `Map::insert` calls inside loops           |
 
 ## CPU/Compute
 
@@ -24,6 +25,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`redundant_env_clone`](redundant_env_clone.md)                       | `warn`           | Unnecessary `.clone()` calls on `Env`      |
+| [`inefficient_bytes_concat`](inefficient_bytes_concat.md)             | `warn`           | Repeated `Bytes` concatenation in loops with unnecessary allocations |
 | [`bytes_append_in_loop`](bytes_append_in_loop.md)                   | `warn`           | Growth-method calls on `Bytes`/`Vec`/`Map` inside loops |
 
 ## Symbol Operations
@@ -35,3 +37,5 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}
+
+<!-- ? -->
