@@ -23,10 +23,11 @@ use rustc_span::def_id::DefId;
 
 dylint_linting::dylint_library!();
 
-fn match_soroban_def_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, segments: &[&str]) -> bool {
-    let full = cx.tcx.def_path_str(def_id);
-    let suffix: String = segments.join("::");
-    full.ends_with(&suffix)
+/// Compares `def_id` against the canonical definition path `segments` without
+/// allocating.  Walks the crate graph lazily segment by segment, so re-exports
+/// that share the original `DefId` are automatically matched.
+fn match_soroban_def_path(cx: &LateContext<'_>, def_id: DefId, segments: &[&str]) -> bool {
+    clippy_utils::match_def_path(cx, def_id, segments)
 }
 
 /// Soroban storage accessor types. Every method call on one of these reaches
