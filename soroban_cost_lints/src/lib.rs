@@ -244,6 +244,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: BYTES_APPEND_IN_LOOP,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: EXCESSIVE_VEC_CAPACITY,
+        category: LintCategory::Memory,
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -258,6 +262,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         INEFFICIENT_BYTES_CONCAT,
         MAP_INSERT_IN_LOOP,
         BYTES_APPEND_IN_LOOP,
+        EXCESSIVE_VEC_CAPACITY,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
@@ -268,6 +273,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(ExcessiveVecCapacity));
 }
 
 rustc_session::declare_lint! {
@@ -757,6 +763,124 @@ impl<'tcx> LateLintPass<'tcx> for MapInsertInLoop {
                     "accumulate mutations in memory first and write once after the loop",
                 );
             }
+        }
+    }
+}
+
+// =======================================================================
+// excessive_vec_capacity — Lint
+// =======================================================================
+
+/// Capacity above which a hard-coded `Vec::with_capacity` / `.reserve` /
+/// `.reserve_exact` call is flagged as excessive.
+///
+/// Soroban's guest Wasm instance runs against a small, hard-capped linear
+/// memory budget (see docs/cost_rationale.md#2-memory-ram). Unlike a
+/// long-running server process, over-reserving here is not "cheap and
+/// harmless": the allocation is charged against that cap the moment it is
+/// made, whether or not the capacity is ever filled. 1024 elements is a
+/// conservative threshold chosen to catch clearly oversized, hard-coded
+/// reservations without flagging ordinary small buffers.
+const EXCESSIVE_VEC_CAPACITY_THRESHOLD: u128 = 1024;
+
+rustc_session::declare_lint! {
+    pub EXCESSIVE_VEC_CAPACITY,
+    Warn,
+    "Vec capacity allocation with a large, hard-coded literal"
+}
+pub struct ExcessiveVecCapacity;
+rustc_session::impl_lint_pass!(ExcessiveVecCapacity => [EXCESSIVE_VEC_CAPACITY]);
+
+/// The literal integer value of `expr`, if it is one, regardless of suffix
+/// (`1024`, `1024usize`, `1_024` all resolve here).
+fn literal_int_value(expr: &hir::Expr<'_>) -> Option<u128> {
+    if let hir::ExprKind::Lit(lit) = expr.kind
+        && let LitKind::Int(value, _) = lit.node
+    {
+        Some(value.get())
+    } else {
+        None
+    }
+}
+
+fn report_excessive_vec_capacity<'tcx>(
+    cx: &LateContext<'tcx>,
+    span: rustc_span::Span,
+    capacity: u128,
+) {
+    span_lint_and_help(
+        cx,
+        EXCESSIVE_VEC_CAPACITY,
+        span,
+        format!("allocating a Vec with a large hard-coded capacity ({capacity})"),
+        None,
+        "reserve capacity based on a known, bounded input size, or grow the vector \
+         incrementally instead of over-allocating up front",
+    );
+}
+
+/// `rustc_middle::ty::TyCtxt::def_path_str` embeds the generic parameter
+/// list of the enclosing impl block for associated items on generic types
+/// (e.g. `alloc::vec::Vec::<T>::with_capacity`), unlike the plain path used
+/// for ADT names and free functions. Stripping bracketed segments lets a
+/// plain suffix match (as in [`match_soroban_def_path`]) work uniformly on
+/// both.
+fn strip_generic_segments(path: &str) -> String {
+    let mut stripped = String::with_capacity(path.len());
+    let mut depth = 0u32;
+    for ch in path.chars() {
+        match ch {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => stripped.push(ch),
+            _ => {}
+        }
+    }
+    // Removing a bracketed `<T>` leaves an empty path segment behind (e.g.
+    // `Vec::` + `::with_capacity` = `Vec::::with_capacity`); drop it.
+    stripped
+        .split("::")
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("::")
+}
+
+fn match_generic_fn_path<'tcx>(cx: &LateContext<'tcx>, def_id: DefId, segments: &[&str]) -> bool {
+    let full = strip_generic_segments(&cx.tcx.def_path_str(def_id));
+    let suffix: String = segments.join("::");
+    full.ends_with(&suffix)
+}
+
+impl<'tcx> LateLintPass<'tcx> for ExcessiveVecCapacity {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        match expr.kind {
+            // Vec::with_capacity(N) / Vec::<T>::with_capacity(N)
+            hir::ExprKind::Call(callee, args) => {
+                if let [arg] = args
+                    && let hir::ExprKind::Path(ref qpath) = callee.kind
+                    && let Some(def_id) = cx.qpath_res(qpath, callee.hir_id).opt_def_id()
+                    && match_generic_fn_path(cx, def_id, &["vec", "Vec", "with_capacity"])
+                    && let Some(capacity) = literal_int_value(arg)
+                    && capacity > EXCESSIVE_VEC_CAPACITY_THRESHOLD
+                {
+                    report_excessive_vec_capacity(cx, expr.span, capacity);
+                }
+            }
+            // v.reserve(N) / v.reserve_exact(N)
+            hir::ExprKind::MethodCall(path_segment, receiver, args, _span) => {
+                let method = path_segment.ident.name.as_str();
+                if let [arg] = args
+                    && (method == "reserve" || method == "reserve_exact")
+                    && let rustc_middle::ty::Adt(adt_def, _) =
+                        cx.typeck_results().expr_ty(receiver).peel_refs().kind()
+                    && match_soroban_def_path(cx, adt_def.did(), &["vec", "Vec"])
+                    && let Some(capacity) = literal_int_value(arg)
+                    && capacity > EXCESSIVE_VEC_CAPACITY_THRESHOLD
+                {
+                    report_excessive_vec_capacity(cx, expr.span, capacity);
+                }
+            }
+            _ => {}
         }
     }
 }

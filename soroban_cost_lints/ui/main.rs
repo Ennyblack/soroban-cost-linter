@@ -442,4 +442,42 @@ fn good_single_append_outside_loop() {
     bytes.append(&Bytes(vec![])); // Good - single append outside loop
 }
 
+// =======================================================================
+// excessive_vec_capacity — Fixtures
+// =======================================================================
+
+fn bad_vec_with_capacity_literal() {
+    let _items: std::vec::Vec<u32> = std::vec::Vec::with_capacity(10_000); // Should Warn
+}
+
+fn bad_vec_reserve_literal() {
+    let mut items: std::vec::Vec<u32> = std::vec::Vec::new();
+    items.reserve(5000); // Should Warn
+}
+
+fn bad_vec_reserve_exact_literal() {
+    let mut items: std::vec::Vec<u32> = std::vec::Vec::new();
+    items.reserve_exact(2048); // Should Warn
+}
+
+fn good_vec_with_capacity_small_literal() {
+    let _items: std::vec::Vec<u32> = std::vec::Vec::with_capacity(16); // Good — small, reasonable capacity
+}
+
+fn good_vec_with_capacity_from_input_len(input: &[u32]) {
+    let _items: std::vec::Vec<u32> = std::vec::Vec::with_capacity(input.len()); // Good — bound to a known input size
+}
+
+fn good_vec_new_grows_incrementally() {
+    let mut items: std::vec::Vec<u32> = std::vec::Vec::new(); // Good — no reservation at all
+    for i in 0..10 {
+        items.push(i);
+    }
+}
+
+#[allow(excessive_vec_capacity)]
+fn allowed_vec_with_capacity_literal() {
+    let _items: std::vec::Vec<u32> = std::vec::Vec::with_capacity(10_000); // Good (allowed)
+}
+
 fn main() {}
