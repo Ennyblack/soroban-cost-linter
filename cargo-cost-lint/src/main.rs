@@ -36,6 +36,7 @@ struct LintFinding {
 
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
+#[command(version)]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
@@ -46,6 +47,12 @@ struct Cli {
 
     #[arg(long, help = "Automatically apply fixable lint suggestions")]
     fix: bool,
+
+    #[arg(
+        long,
+        help = "List all registered lints with their default levels and descriptions"
+    )]
+    list_lints: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -92,6 +99,15 @@ fn main() {
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
     }
+
+    // Handle --version / -V explicitly: clap 4.0's #[command(version)]
+    // displays the version but does not auto-exit, so we must check early
+    // and exit 0 before falling through to the cargo-dylint machinery.
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("cargo-cost-lint {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     let cli = match Cli::try_parse_from(args) {
         Ok(c) => c,
         Err(e) => {
@@ -99,6 +115,13 @@ fn main() {
             exit(1);
         }
     };
+
+    if cli.list_lints {
+        for info in LINT_INFO {
+            println!("{}\t{}\t{}", info.name, info.level, info.description);
+        }
+        return;
+    }
 
     let allowed = allowed_files(Path::new("."));
 
