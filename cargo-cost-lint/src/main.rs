@@ -87,6 +87,15 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
+fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
+    if !config_path.exists() {
+        return None;
+    }
+
+    let config_str = fs::read_to_string(config_path).ok()?;
+    toml::from_str::<BudgetConfig>(&config_str).ok()
+}
+
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
@@ -104,13 +113,9 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if Path::new(config_path).exists() {
-            if let Ok(config_str) = fs::read_to_string(config_path) {
-                if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
-                    // ... validate (existing code)
-                    let _ = config;
-                }
-            }
+        if let Some(config) = load_budget_config(Path::new(config_path)) {
+            // ... validate (existing code)
+            let _ = config;
         }
     }
 
@@ -425,5 +430,35 @@ mod tests {
     fn is_reportable_keeps_empty_file_field() {
         let allowed: HashSet<PathBuf> = HashSet::new();
         assert!(is_reportable("", &allowed));
+    }
+
+    #[test]
+    fn load_budget_config_returns_none_for_missing_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing_config = dir.path().join("budget.toml");
+
+        assert!(load_budget_config(&missing_config).is_none());
+    }
+
+    #[test]
+    fn load_budget_config_parses_valid_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("budget.toml");
+        write_file(&config_path, "[lints]\nfoo = \"warn\"\n");
+
+        let config = load_budget_config(&config_path).unwrap();
+        assert_eq!(
+            config.lints.as_ref().and_then(|l| l.get("foo")),
+            Some(&"warn".to_string())
+        );
+    }
+
+    #[test]
+    fn load_budget_config_returns_none_for_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("budget.toml");
+        write_file(&config_path, "[lints\nfoo = \"warn\"\n");
+
+        assert!(load_budget_config(&config_path).is_none());
     }
 }
