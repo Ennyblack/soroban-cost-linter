@@ -1,5 +1,5 @@
 warning: storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -8,7 +8,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -16,7 +16,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -25,7 +25,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = note: `#[warn(loop_invariant_storage_access)]` on by default
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^
@@ -33,7 +33,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:124:9
+  --> $DIR/main.rs:144:9
    |
 LL |         env.storage().instance().set(&i, &1); // Should Warn
    |         ^^^^^^^^^^^^^
@@ -41,7 +41,7 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: hoist this storage operation out of the loop
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -49,7 +49,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -57,7 +57,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -65,7 +65,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: hoist this storage operation out of the loop
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^
@@ -73,7 +73,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:131:30
+  --> $DIR/main.rs:151:30
    |
 LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should Warn
    |                              ^^^^^^^^^^^^^
@@ -81,7 +81,7 @@ LL |         let _: Option<i32> = env.storage().persistent().get(&i); // Should 
    = help: hoist this storage operation out of the loop
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -89,7 +89,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -97,7 +97,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: hoist this storage operation out of the loop
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -105,7 +105,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -113,7 +113,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: hoist this storage operation out of the loop
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^
@@ -121,7 +121,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:138:12
+  --> $DIR/main.rs:158:12
    |
 LL |         if env.storage().temporary().has(&1) { // Should Warn
    |            ^^^^^^^^^^^^^
@@ -129,7 +129,7 @@ LL |         if env.storage().temporary().has(&1) { // Should Warn
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:151:9
+  --> $DIR/main.rs:171:9
    |
 LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -137,7 +137,7 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:151:9
+  --> $DIR/main.rs:171:9
    |
 LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    |         ^^^^^^^^^^^^^
@@ -145,7 +145,7 @@ LL |         env.storage().instance().set(&i, &1); // Good (allowed)
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:163:9
+  --> $DIR/main.rs:183:9
    |
 LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -153,7 +153,7 @@ LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn 
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:163:9
+  --> $DIR/main.rs:183:9
    |
 LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -161,7 +161,7 @@ LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn 
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:163:9
+  --> $DIR/main.rs:183:9
    |
 LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
    |         ^^^^^^^^^^^^^
@@ -169,7 +169,7 @@ LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn 
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:170:33
+  --> $DIR/main.rs:190:33
    |
 LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -177,7 +177,7 @@ LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_k
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:170:33
+  --> $DIR/main.rs:190:33
    |
 LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -185,7 +185,7 @@ LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_k
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:170:33
+  --> $DIR/main.rs:190:33
    |
 LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
    |                                 ^^^^^^^^^^^^^
@@ -193,7 +193,7 @@ LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_k
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:177:12
+  --> $DIR/main.rs:197:12
    |
 LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -201,7 +201,7 @@ LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invari
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:177:12
+  --> $DIR/main.rs:197:12
    |
 LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -209,7 +209,7 @@ LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invari
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:177:12
+  --> $DIR/main.rs:197:12
    |
 LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
    |            ^^^^^^^^^^^^^
@@ -217,7 +217,7 @@ LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invari
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:186:9
+  --> $DIR/main.rs:206:9
    |
 LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -225,7 +225,7 @@ LL |         env.storage().instance().set(&i, &i); // Good — key and value dep
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:186:9
+  --> $DIR/main.rs:206:9
    |
 LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
    |         ^^^^^^^^^^^^^
@@ -233,7 +233,7 @@ LL |         env.storage().instance().set(&i, &i); // Good — key and value dep
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:193:33
+  --> $DIR/main.rs:213:33
    |
 LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -241,7 +241,7 @@ LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:193:33
+  --> $DIR/main.rs:213:33
    |
 LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
    |                                 ^^^^^^^^^^^^^
@@ -249,7 +249,7 @@ LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:201:12
+  --> $DIR/main.rs:221:12
    |
 LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
    |            ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -257,7 +257,7 @@ LL |         if env.storage().temporary().has(&n) { // Good — key depends on m
    = help: hoist this storage operation out of the loop
 
 warning: loop-invariant storage operation inside a loop
-  --> $DIR/main.rs:201:12
+  --> $DIR/main.rs:221:12
    |
 LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
    |            ^^^^^^^^^^^^^
@@ -265,7 +265,7 @@ LL |         if env.storage().temporary().has(&n) { // Good — key depends on m
    = help: hoist this storage operation out of the loop
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:216:9
+  --> $DIR/main.rs:236:9
    |
 LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -273,7 +273,7 @@ LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:216:9
+  --> $DIR/main.rs:236:9
    |
 LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    |         ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -281,7 +281,7 @@ LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: storage operation inside a loop
-  --> $DIR/main.rs:216:9
+  --> $DIR/main.rs:236:9
    |
 LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    |         ^^^^^^^^^^^^^
@@ -289,7 +289,7 @@ LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
    = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
-  --> $DIR/main.rs:225:19
+  --> $DIR/main.rs:245:19
    |
 LL |     let _cloned = env.clone(); // Should Warn
    |                   ^^^^^^^^^^^
@@ -298,7 +298,7 @@ LL |     let _cloned = env.clone(); // Should Warn
    = note: `#[warn(redundant_env_clone)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:243:20
+  --> $DIR/main.rs:263:20
    |
 LL |         let _seq = env.ledger().sequence(); // Should Warn
    |                    ^^^^^^^^^^^^^^^^^^^^^^^
@@ -307,7 +307,7 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn
    = note: `#[warn(unnecessary_host_function_call)]` on by default
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:264:21
+  --> $DIR/main.rs:284:21
    |
 LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same input every iteration
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -315,7 +315,7 @@ LL |         let _hash = env.crypto().sha256(&data); // Should Warn — same inp
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:286:18
+  --> $DIR/main.rs:306:18
    |
 LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -323,7 +323,7 @@ LL |         let _n = env.prng().u64_in_range(0, 100); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: unnecessary host function call inside loop
-  --> $DIR/main.rs:292:21
+  --> $DIR/main.rs:312:21
    |
 LL |         let _addr = env.current_contract_address(); // Should Warn
    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -331,7 +331,7 @@ LL |         let _addr = env.current_contract_address(); // Should Warn
    = help: call this function outside the loop and reuse the result
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:314:16
+  --> $DIR/main.rs:334:16
    |
 LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
@@ -339,16 +339,33 @@ LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
    = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:318:16
+  --> $DIR/main.rs:338:16
    |
 LL |     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("abcdefghi")`
 
 warning: Symbol::new called with a short literal that could use symbol_short! macro
-  --> $DIR/main.rs:326:16
+  --> $DIR/main.rs:346:16
    |
 LL |     let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello_wor")`
 
-warning: 44 warnings emitted
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/main.rs:378:9
+   |
+LL |         bytes.append(&Bytes); // Should Warn
+   |         ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+   = note: `#[warn(bytes_append_in_loop)]` on by default
+
+warning: repeatedly growing SDK container inside a loop
+  --> $DIR/main.rs:386:9
+   |
+LL |         v.push_back(i); // Should Warn
+   |         ^^^^^^^^^^^^^^
+   |
+   = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
+
+warning: 46 warnings emitted
 
