@@ -19,15 +19,40 @@ use rustc_hir as hir;
 use rustc_hir::intravisit::{self, Visitor};
 use rustc_hir::{HirId, HirIdSet};
 use rustc_lint::{LateContext, LateLintPass, LintStore};
+use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 dylint_linting::dylint_library!();
 
-/// Compares `def_id` against the canonical definition path `segments` without
-/// allocating.  Walks the crate graph lazily segment by segment, so re-exports
-/// that share the original `DefId` are automatically matched.
+// ---------------------------------------------------------------------------
+// Per-DefId cache of `def_path_str` so that the expensive full-path
+// formatting happens at most once per unique DefId instead of for every
+// method-call expression the lints visit.
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static DEF_PATH_CACHE: RefCell<HashMap<DefId, String>> = RefCell::new(HashMap::new());
+}
+
+fn cached_def_path_str(tcx: TyCtxt<'_>, def_id: DefId) -> String {
+    DEF_PATH_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache
+            .entry(def_id)
+            .or_insert_with(|| tcx.def_path_str(def_id))
+            .clone()
+    })
+}
+
+/// Compares `def_id` against the canonical definition path `segments`.
+/// The hot `def_path_str` call is cached per `DefId` so repeated checks on
+/// the same type (e.g. `Env`, `Bytes`) avoid re-formatting the full path.
 fn match_soroban_def_path(cx: &LateContext<'_>, def_id: DefId, segments: &[&str]) -> bool {
-    clippy_utils::match_def_path(cx, def_id, segments)
+    let full = cached_def_path_str(cx.tcx, def_id);
+    let suffix: String = segments.join("::");
+    full.ends_with(&suffix)
 }
 
 /// Soroban storage accessor types. Every method call on one of these reaches
