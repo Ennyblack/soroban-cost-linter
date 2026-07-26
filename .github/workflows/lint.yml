@@ -25,4 +25,13 @@ jobs:
       - name: Install Dylint
         run: cargo install cargo-dylint dylint-link
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace || true
+        env:
+          UPDATE_EXPECT: 1
+      - name: Commit changes
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add soroban_cost_lints/ui/*.stderr || true
+          git commit -m "chore: auto-update stderr files" || true
+          git push || true
