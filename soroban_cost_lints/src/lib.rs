@@ -475,6 +475,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+        category: LintCategory::SymbolOperations,
+    },
+    LintMetadata {
         lint: VEC_WHERE_SLICE_COULD_BE_USED,
         category: LintCategory::Memory,
     },
@@ -501,6 +505,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         MAP_INSERT_IN_LOOP,
         BYTES_APPEND_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
+        STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         VEC_WHERE_SLICE_COULD_BE_USED,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
@@ -515,6 +520,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
 }
 
@@ -1388,6 +1394,53 @@ impl<'tcx> LateLintPass<'tcx> for SignatureVerificationInLoop {
 // =======================================================================
 // vec_where_slice_could_be_used — Lint
 // =======================================================================
+
+rustc_session::declare_lint! {
+    pub STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+    Warn,
+    "storage key constructed inside a loop body where it could be hoisted"
+}
+pub struct StorageKeyConstructionInLoop;
+rustc_session::impl_lint_pass!(StorageKeyConstructionInLoop => [STORAGE_KEY_CONSTRUCTION_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for StorageKeyConstructionInLoop {
+    /// Flags `Symbol::new(&env, ...)` calls inside a loop body when the key
+    /// does not depend on the loop variable.
+    ///
+    /// `Symbol::new` allocates through the host on every call. When the key
+    /// is loop-invariant, constructing it once before the loop and reusing
+    /// the result avoids repeated host allocations.
+    ///
+    /// Key construction that depends on the loop variable is not flagged:
+    /// that is genuine per-iteration work and hoisting would change behaviour.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // Match `Symbol::new(&env, key)` calls — a two-argument call whose
+        // callee resolves to `soroban_sdk::Symbol::new`.
+        if let hir::ExprKind::Call(callee, args) = expr.kind
+            && args.len() == 2
+            && let hir::ExprKind::Path(ref qpath) = callee.kind
+            && let Some(def_id) = cx.qpath_res(qpath, callee.hir_id).opt_def_id()
+            && match_soroban_def_path(cx, def_id, &["soroban_sdk", "Symbol", "new"])
+        {
+            // Only fire inside a syntactic loop body.
+            if let Some(loop_expr) = enclosing_loop(cx, expr) {
+                // Only fire when the key does NOT depend on the loop state.
+                // A key that reads the loop variable (e.g. `Symbol::new(&env,
+                // &format!("key_{}", i))`) is genuine per-iteration work.
+                if !depends_on_loop_state(cx, loop_expr, expr) {
+                    span_lint_and_help(
+                        cx,
+                        STORAGE_KEY_CONSTRUCTION_IN_LOOP,
+                        expr.span,
+                        "storage key constructed inside a loop body",
+                        None,
+                        "hoist the key construction outside the loop to avoid repeated host allocations",
+                    );
+                }
+            }
+        }
+    }
+}
 
 rustc_session::declare_lint! {
     pub VEC_WHERE_SLICE_COULD_BE_USED,

@@ -717,4 +717,27 @@ fn allowed_unnecessary_vec_allocation() {
     let _unused = Vec::new(); // Good (allowed)
 }
 
+// =======================================================================
+// storage_key_construction_in_loop — Fixtures
+// =======================================================================
+
+fn bad_storage_key_construction_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _key = Symbol::new(&env, "constant_key"); // Should Warn — same key every iteration
+    }
+}
+
+fn good_storage_key_depends_on_loop(env: Env) {
+    for i in 0..10 {
+        let _key = Symbol::new(&env, ["a", "b"][i as usize]); // Good — key depends on loop variable
+    }
+}
+
+#[allow(storage_key_construction_in_loop)]
+fn allowed_storage_key_construction_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _key = Symbol::new(&env, "constant_key"); // Good (allowed)
+    }
+}
+
 fn main() {}

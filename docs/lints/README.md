@@ -36,6 +36,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md)     | `warn`           | `Symbol::new` with short literal arguments |
+| [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn`           | Loop-invariant `Symbol::new` key construction inside loops |
 
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
