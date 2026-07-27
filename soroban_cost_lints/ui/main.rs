@@ -42,7 +42,16 @@ pub mod soroban_sdk {
 
     pub struct Address;
 
-    pub mod storage {
+    pub struct String;
+    impl Clone for String {
+        fn clone(&self) -> Self { String }
+    }
+    impl String {
+        pub fn from_str(_env: &Env, _s: &str) -> String { String }
+        pub fn to_bytes(&self) -> Bytes { Bytes(vec![]) }
+    }
+
+    pub mod storage{
         pub struct Storage;
         impl Storage {
             pub fn instance(&self) -> Instance { Instance }
@@ -153,7 +162,7 @@ pub mod soroban_sdk {
     }
 }
 
-use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
+use soroban_sdk::{Bytes, Env, Map, String, Symbol, Vec};
 
 
 // Realistic false-positive scenario: batch-writing different keys per iteration
@@ -298,6 +307,29 @@ fn good_deployer_call_outside_loop(env: Env) {
 }
 
 // =======================================================================
+// unnecessary_string_to_bytes — Fixtures
+// =======================================================================
+
+fn bad_string_to_bytes(env: Env) {
+    let s = String::from_str(&env, "hello");
+    let _b = s.to_bytes(); // Should Warn
+}
+
+fn bad_string_to_bytes_inline(env: Env) {
+    let _b = String::from_str(&env, "hello").to_bytes(); // Should Warn
+}
+
+fn good_string_without_to_bytes(env: Env) {
+    let _s = String::from_str(&env, "hello"); // Good
+}
+
+#[allow(unnecessary_string_to_bytes)]
+fn allowed_string_to_bytes(env: Env) {
+    let s = String::from_str(&env, "hello");
+    let _b = s.to_bytes(); // Good (allowed)
+}
+
+// =======================================================================
 // symbol_new_for_short_literal — Fixtures
 // =======================================================================
 
@@ -309,8 +341,8 @@ fn bad_symbol_new_9_chars(env: Env) {
     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
 }
 
-fn bad_symbol_new_with_underscore(env: Env) {
-    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+fn good_symbol_new_with_underscore_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
 }
 
 fn bad_symbol_new_short_with_underscore(env: Env) {

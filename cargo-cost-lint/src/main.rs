@@ -57,6 +57,7 @@ struct SarifTool {
     driver: SarifToolDriver,
 }
 
+#[allow(non_snake_case)]
 #[derive(Serialize)]
 struct SarifToolDriver {
     name: String,
