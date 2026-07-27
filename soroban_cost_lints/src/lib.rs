@@ -530,7 +530,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
 
 rustc_session::declare_lint! {
     pub SOROBAN_STORAGE_IN_LOOP,
-    Warn,
+    Deny,
     "storage operations inside a loop"
 }
 /// Late pass backing [`SOROBAN_STORAGE_IN_LOOP`].
