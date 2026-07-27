@@ -49,7 +49,7 @@ struct SarifReport {
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
-    results: Vec<SarifResult>,
+    results: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -62,12 +62,14 @@ struct SarifToolDriver {
     name: String,
     version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    informationUri: Option<String>,
+    #[serde(rename = "informationUri")]
+    information_uri: Option<String>,
 }
 
 #[derive(Serialize)]
 struct SarifResult {
-    ruleId: String,
+    #[serde(rename = "ruleId")]
+    rule_id: String,
     level: String,
     message: SarifMessage,
     locations: Vec<SarifLocation>,
@@ -80,12 +82,14 @@ struct SarifMessage {
 
 #[derive(Serialize)]
 struct SarifLocation {
-    physicalLocation: SarifPhysicalLocation,
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Serialize)]
 struct SarifPhysicalLocation {
-    artifactLocation: SarifArtifactLocation,
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
     #[serde(skip_serializing_if = "Option::is_none")]
     region: Option<SarifRegion>,
 }
@@ -97,13 +101,17 @@ struct SarifArtifactLocation {
 
 #[derive(Serialize)]
 struct SarifRegion {
-    startLine: usize,
+    #[serde(rename = "startLine")]
+    start_line: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
-    startColumn: Option<usize>,
+    #[serde(rename = "startColumn")]
+    start_column: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    endLine: Option<usize>,
+    #[serde(rename = "endLine")]
+    end_line: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    endColumn: Option<usize>,
+    #[serde(rename = "endColumn")]
+    end_column: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -149,6 +157,45 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
         Ok(canon) => allowed.contains(&canon),
         Err(_) => true,
     }
+}
+
+fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    let config_str =
+        fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
+    let config: BudgetConfig = toml::from_str(&config_str)
+        .map_err(|e| format!("Error: Failed to parse {}: {}", path, e))?;
+    let mut lint_flags = Vec::new();
+
+    if let Some(lints) = config.lints {
+        for (lint, level) in lints {
+            if !LINT_NAMES.contains(&lint.as_str()) {
+                return Err(format!(
+                    "Error: Unknown lint name '{}' in {}. Valid lints: {}",
+                    lint,
+                    path,
+                    LINT_NAMES.join(", ")
+                ));
+            }
+
+            let level_flag = match level.as_str() {
+                "allow" => Some("-A"),
+                "warn" => Some("-W"),
+                "deny" => Some("-D"),
+                _ => None,
+            };
+
+            if let Some(flag) = level_flag {
+                lint_flags.push(format!("{} {}", flag, lint));
+            } else {
+                return Err(format!(
+                    "Error: Unknown lint level '{}' for '{}' in {}. Valid levels are allow, warn, and deny.",
+                    level, lint, path
+                ));
+            }
+        }
+    }
+
+    Ok(lint_flags)
 }
 
 fn main() {
@@ -228,51 +275,53 @@ fn main() {
                     if let Some(code) = message.get("code") {
                         if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                             if LINT_NAMES.contains(&lint_name) {
-                                let level = message
+                                let level = diagnostic
                                     .get("level")
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let msg_text = message
+                                let diagnostic_message = diagnostic
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
                                 let mut file = String::new();
-                                let mut span_obj = Span {
+                                let mut primary_span = Span {
                                     line_start: 0,
                                     line_end: 0,
                                     column_start: 0,
                                     column_end: 0,
                                 };
 
-                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
+                                if let Some(spans) =
+                                    diagnostic.get("spans").and_then(|s| s.as_array())
                                 {
-                                    for s in spans {
-                                        if s.get("is_primary")
+                                    for span in spans {
+                                        if span
+                                            .get("is_primary")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false)
                                         {
-                                            file = s
+                                            file = span
                                                 .get("file_name")
                                                 .and_then(|f| f.as_str())
                                                 .unwrap_or("")
                                                 .to_string();
-                                            span_obj.line_start = s
+                                            primary_span.line_start = span
                                                 .get("line_start")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.line_end = s
+                                            primary_span.line_end = span
                                                 .get("line_end")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_start = s
+                                            primary_span.column_start = span
                                                 .get("column_start")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_end = s
+                                            primary_span.column_end = span
                                                 .get("column_end")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
@@ -334,7 +383,7 @@ fn main() {
                                     let rendered = message
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
+                                        .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
                             }
@@ -352,9 +401,8 @@ fn main() {
     if cli.format == OutputFormat::Sarif {
         let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
         let mut rules: Vec<serde_json::Value> = Vec::new();
-        let mut seen_rules: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut sarif_results: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut sarif_results: Vec<SarifResult> = Vec::new();
 
         for finding in &findings {
             if seen_rules.insert(finding.name.clone()) {
@@ -370,29 +418,31 @@ fn main() {
             };
 
             let region = if finding.span.line_start > 0 {
-                Some(serde_json::json!({
-                    "startLine": finding.span.line_start,
-                    "startColumn": finding.span.column_start,
-                    "endLine": finding.span.line_end,
-                    "endColumn": finding.span.column_end,
-                }))
+                Some(SarifRegion {
+                    start_line: finding.span.line_start,
+                    start_column: Some(finding.span.column_start),
+                    end_line: Some(finding.span.line_end),
+                    end_column: Some(finding.span.column_end),
+                })
             } else {
                 None
             };
 
-            let physical_location = serde_json::json!({
-                "artifactLocation": { "uri": finding.file },
-                "region": region,
+            sarif_results.push(SarifResult {
+                rule_id: finding.name.clone(),
+                level: level.to_string(),
+                message: SarifMessage {
+                    text: finding.message.clone(),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: finding.file.clone(),
+                        },
+                        region,
+                    },
+                }],
             });
-
-            sarif_results.push(serde_json::json!({
-                "ruleId": finding.name,
-                "level": level,
-                "message": { "text": finding.message },
-                "locations": [
-                    { "physicalLocation": physical_location }
-                ],
-            }));
         }
 
         let sarif = SarifReport {
@@ -403,9 +453,10 @@ fn main() {
                     driver: SarifToolDriver {
                         name: "cargo-cost-lint".to_string(),
                         version: package_version.to_string(),
-                        informationUri: Some(
+                        information_uri: Some(
                             "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
                         ),
+                        rules,
                     },
                 },
                 results: sarif_results,
@@ -565,5 +616,82 @@ mod tests {
     fn is_reportable_keeps_empty_file_field() {
         let allowed: HashSet<PathBuf> = HashSet::new();
         assert!(is_reportable("", &allowed));
+    }
+
+    #[test]
+    fn absent_config_returns_default_lint_levels() {
+        let dir = std::env::temp_dir().join("cost_lint_test_absent");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unparseable_config_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "this is not valid toml = {{{").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to parse"),
+            "expected parse error, got: {}",
+            err
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn valid_config_returns_flags() {
+        let dir = std::env::temp_dir().join("cost_lint_test_valid");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\nredundant_env_clone = \"warn\""
+        )
+        .unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_ok());
+        let flags = result.unwrap();
+        assert_eq!(flags.len(), 2);
+        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
+        assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_level_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
