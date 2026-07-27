@@ -42,7 +42,16 @@ pub mod soroban_sdk {
 
     pub struct Address;
 
-    pub mod storage {
+    pub struct String;
+    impl Clone for String {
+        fn clone(&self) -> Self { String }
+    }
+    impl String {
+        pub fn from_str(_env: &Env, _s: &str) -> String { String }
+        pub fn to_bytes(&self) -> Bytes { Bytes(vec![]) }
+    }
+
+    pub mod storage{
         pub struct Storage;
         impl Storage {
             pub fn instance(&self) -> Instance { Instance }
@@ -153,7 +162,7 @@ pub mod soroban_sdk {
     }
 }
 
-use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
+use soroban_sdk::{Bytes, Env, Map, String, Symbol, Vec};
 
 
 use soroban_sdk::Env;
@@ -202,6 +211,48 @@ fn allowed_clone_env(env: Env) {
 }
 
 
+
+// =======================================================================
+// symbol_new_for_short_literal — Fixtures
+// =======================================================================
+
+fn bad_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
+}
+
+fn bad_symbol_new_9_chars(env: Env) {
+    let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
+}
+
+fn bad_symbol_new_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+}
+
+fn bad_symbol_new_short_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
+}
+
+fn good_symbol_new_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
+}
+
+fn good_symbol_new_invalid_chars(env: Env) {
+    let _sym = Symbol::new(&env, "hello-world"); // Good - contains invalid char '-'
+}
+
+fn good_symbol_new_non_literal(env: Env) {
+    let s = "hello";
+    let _sym = Symbol::new(&env, s); // Good - not a literal
+}
+
+fn good_symbol_new_empty(env: Env) {
+    let _sym = Symbol::new(&env, ""); // Good - empty string
+}
+
+#[allow(symbol_new_for_short_literal)]
+fn allowed_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Good (allowed)
+}
 
 fn bad_crypto_call_in_loop(env: Env) {
     let data = [1u8, 2, 3];
@@ -259,6 +310,29 @@ fn good_deployer_call_outside_loop(env: Env) {
 }
 
 // =======================================================================
+// unnecessary_string_to_bytes — Fixtures
+// =======================================================================
+
+fn bad_string_to_bytes(env: Env) {
+    let s = String::from_str(&env, "hello");
+    let _b = s.to_bytes(); // Should Warn
+}
+
+fn bad_string_to_bytes_inline(env: Env) {
+    let _b = String::from_str(&env, "hello").to_bytes(); // Should Warn
+}
+
+fn good_string_without_to_bytes(env: Env) {
+    let _s = String::from_str(&env, "hello"); // Good
+}
+
+#[allow(unnecessary_string_to_bytes)]
+fn allowed_string_to_bytes(env: Env) {
+    let s = String::from_str(&env, "hello");
+    let _b = s.to_bytes(); // Good (allowed)
+}
+
+// =======================================================================
 // symbol_new_for_short_literal — Fixtures
 // =======================================================================
 
@@ -270,8 +344,8 @@ fn bad_symbol_new_9_chars(env: Env) {
     let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
 }
 
-fn bad_symbol_new_with_underscore(env: Env) {
-    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+fn good_symbol_new_with_underscore_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
 }
 
 fn bad_symbol_new_short_with_underscore(env: Env) {

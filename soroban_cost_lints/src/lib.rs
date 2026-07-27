@@ -332,6 +332,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
+        UNNECESSARY_STRING_TO_BYTES,
         STORAGE_WRITE_WITHOUT_READ,
         INEFFICIENT_BYTES_CONCAT,
         MAP_INSERT_IN_LOOP,
@@ -343,6 +344,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
+    lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
@@ -566,6 +568,44 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
                     "use of Host object inside a loop",
                     None,
                     "consider moving the Host usage outside the loop if possible",
+                );
+            }
+        }
+    }
+}
+
+rustc_session::declare_lint! {
+    /// ### What it does
+    /// Detects unnecessary `.to_bytes()` calls on the Soroban `String` object.
+    pub UNNECESSARY_STRING_TO_BYTES,
+    Warn,
+    "unnecessary String to Bytes conversion"
+}
+pub struct UnnecessaryStringToBytes;
+rustc_session::impl_lint_pass!(UnnecessaryStringToBytes => [UNNECESSARY_STRING_TO_BYTES]);
+
+impl<'tcx> LateLintPass<'tcx> for UnnecessaryStringToBytes {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "to_bytes"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_string = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "String"])
+            } else {
+                false
+            };
+
+            if is_string {
+                span_lint_and_help(
+                    cx,
+                    UNNECESSARY_STRING_TO_BYTES,
+                    expr.span,
+                    "unnecessary String to Bytes conversion",
+                    None,
+                    "use the String directly where Bytes is accepted, or construct Bytes directly instead",
                 );
             }
         }

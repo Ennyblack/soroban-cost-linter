@@ -59,6 +59,13 @@ fn good_host_call_outside_loop(env: Env) {
     }
 }
 
+fn bad_host_call_multiple_times_in_loop(env: Env) {
+    for _ in 0..10 {
+        let _seq1 = env.ledger().sequence(); // Should Warn
+        let _seq2 = env.ledger().sequence(); // Should Warn
+    }
+}
+
 #[allow(unnecessary_host_function_call)]
 fn allowed_host_call_in_loop(env: Env) {
     for _ in 0..10 {
