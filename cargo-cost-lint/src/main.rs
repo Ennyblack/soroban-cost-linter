@@ -395,14 +395,26 @@ fn main() {
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            break;
-                                        }
+                                        span_obj.column_start = s
+                                            .get("column_start")
+                                            .and_then(|c| c.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
+                                        span_obj.column_end = s
+                                            .get("column_end")
+                                            .and_then(|c| c.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
+                                        break;
                                     }
                                 }
+                            }
 
-                                if !is_reportable(&file, &allowed) {
-                                    continue;
-                                }
+                            // Only apply .lintignore filtering to known soroban lints.
+                            // Regular compiler diagnostics always pass through.
+                            if is_soroban_lint && !is_reportable(&file, &allowed) {
+                                continue;
+                            }
 
                                 *lint_counts.entry(lint_name.to_string()).or_insert(0) += 1;
 
@@ -410,6 +422,7 @@ fn main() {
                                     highest_exit_code = 1;
                                 }
 
+                            if let Some(name) = lint_name {
                                 let mut help_text = None;
                                 let mut suggestion = None;
                                 if let Some(children) =
@@ -425,8 +438,7 @@ fn main() {
                                                 .map(|s| s.to_string());
                                             help_text = child_msg.clone();
                                             if cli.fix {
-                                                suggestion =
-                                                    extract_suggestion(&child_msg, lint_name);
+                                                suggestion = extract_suggestion(&child_msg, name);
                                             }
                                             break;
                                         }
@@ -434,7 +446,7 @@ fn main() {
                                 }
 
                                 let finding = LintFinding {
-                                    name: lint_name.to_string(),
+                                    name: name.to_string(),
                                     level: level.to_string(),
                                     file: file.clone(),
                                     span: primary_span,
@@ -457,6 +469,12 @@ fn main() {
                                         .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
+                            } else if cli.format != OutputFormat::Json {
+                                let rendered = message
+                                    .get("rendered")
+                                    .and_then(|r| r.as_str())
+                                    .unwrap_or(msg_text);
+                                print!("{}", rendered);
                             }
                         }
                     }
