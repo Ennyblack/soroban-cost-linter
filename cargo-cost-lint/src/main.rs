@@ -268,7 +268,12 @@ fn main() {
             eprintln!("    cargo install cargo-dylint dylint-link");
             exit(1);
         }
-    }
+        Some(config_path) => {
+            eprintln!("Warning: config file '{}' not found", config_path);
+            Vec::new()
+        }
+        None => Vec::new(),
+    };
 
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
