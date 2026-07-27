@@ -218,6 +218,21 @@ fn main() {
         let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
+    let preflight = Command::new("cargo")
+        .arg("dylint")
+        .arg("--version")
+        .output();
+
+    match preflight {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("Error: cargo-dylint is not installed or not available in PATH.");
+            eprintln!("Please install it by running:");
+            eprintln!("    cargo install cargo-dylint dylint-link");
+            exit(1);
+        }
+    }
+
     let mut cmd = Command::new("cargo");
     cmd.arg("dylint");
     cmd.arg("--lib");
