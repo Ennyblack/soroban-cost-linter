@@ -198,28 +198,48 @@ fn allowed_clone_env(env: Env) {
     let _cloned = env.clone(); // Good (allowed)
 }
 
+
+
 // =======================================================================
-// unnecessary_host_function_call — Fixtures
+// symbol_new_for_short_literal — Fixtures
 // =======================================================================
 
-fn bad_host_call_in_loop(env: Env) {
-    for _ in 0..10 {
-        let _seq = env.ledger().sequence(); // Should Warn
-    }
+fn bad_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
 }
 
-fn good_host_call_outside_loop(env: Env) {
-    let seq = env.ledger().sequence(); // Good — called once before the loop
-    for _ in 0..10 {
-        let _seq = seq;
-    }
+fn bad_symbol_new_9_chars(env: Env) {
+    let _sym = Symbol::new(&env, "abcdefghi"); // Should Warn - exactly 9 chars
 }
 
-#[allow(unnecessary_host_function_call)]
-fn allowed_host_call_in_loop(env: Env) {
-    for _ in 0..10 {
-        let _seq = env.ledger().sequence(); // Good (allowed)
-    }
+fn bad_symbol_new_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Should Warn - 11 chars but only 9 allowed
+}
+
+fn bad_symbol_new_short_with_underscore(env: Env) {
+    let _sym = Symbol::new(&env, "hello_wor"); // Should Warn - 9 chars with underscore
+}
+
+fn good_symbol_new_too_long(env: Env) {
+    let _sym = Symbol::new(&env, "hello_world"); // Good - 11 chars > 9
+}
+
+fn good_symbol_new_invalid_chars(env: Env) {
+    let _sym = Symbol::new(&env, "hello-world"); // Good - contains invalid char '-'
+}
+
+fn good_symbol_new_non_literal(env: Env) {
+    let s = "hello";
+    let _sym = Symbol::new(&env, s); // Good - not a literal
+}
+
+fn good_symbol_new_empty(env: Env) {
+    let _sym = Symbol::new(&env, ""); // Good - empty string
+}
+
+#[allow(symbol_new_for_short_literal)]
+fn allowed_symbol_new_short_literal(env: Env) {
+    let _sym = Symbol::new(&env, "hello"); // Good (allowed)
 }
 
 fn bad_crypto_call_in_loop(env: Env) {

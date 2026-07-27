@@ -68,11 +68,10 @@ LL |     let _cloned = env.clone(); // Should Warn
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:240:20
    |
-LL |         let _seq = env.ledger().sequence(); // Should Warn
-   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+LL |     let _sym = Symbol::new(&env, "hello"); // Should Warn - 5 chars, valid
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: use symbol_short! macro for compile-time symbol creation: `symbol_short!("hello")`
    |
-   = help: call this function outside the loop and reuse the result
-   = note: `#[warn(unnecessary_host_function_call)]` on by default
+   = note: `#[warn(symbol_new_for_short_literal)]` on by default
 
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:261:21
@@ -244,3 +243,4 @@ LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Good (allowed)
 
 warning: 30 warnings emitted
 
+warning: 4 warnings emitted
