@@ -512,6 +512,54 @@ fn good_single_append_outside_loop() {
 }
 
 // =======================================================================
+// unbounded_input_loop — Fixtures
+// =======================================================================
+
+fn bad_param_loop_with_write(env: Env, n: u32) {
+    for i in 0..n {
+        env.storage().instance().set(&i, &1); // Should Warn
+    }
+}
+
+fn bad_param_through_binding(env: Env, limit: u32) {
+    let bound = limit;
+    for i in 0..bound {
+        env.storage().instance().set(&i, &1); // Should Warn
+    }
+}
+
+fn bad_while_param_with_write(env: Env, n: u32) {
+    let mut i = 0;
+    while i < n {
+        env.storage().instance().set(&i, &1); // Should Warn
+        i += 1;
+    }
+}
+
+fn good_constant_bound_loop(env: Env, _n: u32) {
+    for i in 0..100 {
+        env.storage().instance().set(&i, &1); // Good — constant bound
+    }
+}
+
+fn good_param_loop_no_storage(env: Env, n: u32) {
+    for i in 0..n {
+        let _x = i * 2; // Good — no storage operation
+    }
+}
+
+fn good_no_param_binding(env: Env) {
+    let n = 42;
+    for i in 0..n {
+        env.storage().instance().set(&i, &1); // Good — bound is local, not a param
+    }
+}
+
+#[allow(unbounded_input_loop)]
+fn allowed_param_loop(env: Env, n: u32) {
+    for i in 0..n {
+        env.storage().instance().set(&i, &1); // Good (allowed)
+    }
 // excessive_vec_capacity — Fixtures
 // =======================================================================
 // Positive (bad): calling Vec::with_capacity with a far larger capacity than
