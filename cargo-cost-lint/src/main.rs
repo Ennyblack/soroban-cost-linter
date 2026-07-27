@@ -1,16 +1,20 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{exit, Command, Stdio};
 
+mod config;
+use config::Config;
+
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
     Text,
     Json,
+    Sarif,
 }
 
 #[derive(Serialize, Debug)]
@@ -34,8 +38,88 @@ struct LintFinding {
     suggestion: Option<String>,
 }
 
+#[derive(Serialize)]
+struct SarifReport {
+    #[serde(rename = "$schema")]
+    schema: String,
+    version: String,
+    runs: Vec<SarifRun>,
+}
+
+#[derive(Serialize)]
+struct SarifRun {
+    tool: SarifTool,
+    results: Vec<SarifResult>,
+}
+
+#[derive(Serialize)]
+struct SarifTool {
+    driver: SarifToolDriver,
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize)]
+struct SarifToolDriver {
+    name: String,
+    version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "informationUri")]
+    information_uri: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+struct SarifResult {
+    #[serde(rename = "ruleId")]
+    rule_id: String,
+    level: String,
+    message: SarifMessage,
+    locations: Vec<SarifLocation>,
+}
+
+#[derive(Serialize)]
+struct SarifMessage {
+    text: String,
+}
+
+#[derive(Serialize)]
+struct SarifLocation {
+    #[serde(rename = "physicalLocation")]
+    physical_location: SarifPhysicalLocation,
+}
+
+#[derive(Serialize)]
+struct SarifPhysicalLocation {
+    #[serde(rename = "artifactLocation")]
+    artifact_location: SarifArtifactLocation,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    region: Option<SarifRegion>,
+}
+
+#[derive(Serialize)]
+struct SarifArtifactLocation {
+    uri: String,
+}
+
+#[derive(Serialize)]
+struct SarifRegion {
+    #[serde(rename = "startLine")]
+    start_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "startColumn")]
+    start_column: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endLine")]
+    end_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "endColumn")]
+    end_column: Option<usize>,
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
+#[command(version)]
 #[command(about = "CLI wrapper for soroban-cost-linter")]
 struct Cli {
     #[arg(long, help = "Path to budget.toml")]
@@ -46,11 +130,12 @@ struct Cli {
 
     #[arg(long, help = "Automatically apply fixable lint suggestions")]
     fix: bool,
-}
 
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    lints: Option<std::collections::HashMap<String, String>>,
+    #[arg(
+        long,
+        help = "List all registered lints with their default levels and descriptions"
+    )]
+    list_lints: bool,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -84,53 +169,43 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
-/// Translates `[lints]` entries from `budget.toml` into `-A`/`-W`/`-D` flags
-/// for `DYLINT_RUSTFLAGS`.
-///
-/// Each entry maps a lint name to a severity level:
-/// - `"allow"` → `-A lint_name` (allow the lint)
-/// - `"warn"`  → `-W lint_name` (warn on the lint)
-/// - `"deny"`  → `-D lint_name` (deny the lint)
-///
-/// Unknown lint names and unknown levels are skipped with a warning printed
-/// to stderr. A `None` or empty `[lints]` table returns an empty vector,
-/// falling back to each lint's built-in default severity.
-fn lint_config_to_flags(
-    lints: &Option<std::collections::HashMap<String, String>>,
-    known_lints: &[&str],
-) -> Vec<String> {
-    let Some(lints_map) = lints else {
-        return Vec::new();
-    };
+fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
+    let config_str =
+        fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
+    let config: BudgetConfig = toml::from_str(&config_str)
+        .map_err(|e| format!("Error: Failed to parse {}: {}", path, e))?;
+    let mut lint_flags = Vec::new();
 
-    let known: HashSet<&str> = known_lints.iter().copied().collect();
-    let mut flags = Vec::new();
-
-    for (lint_name, level) in lints_map {
-        if !known.contains(lint_name.as_str()) {
-            eprintln!(
-                "Warning: unknown lint '{}' in budget.toml — skipping",
-                lint_name
-            );
-            continue;
-        }
-
-        let flag = match level.as_str() {
-            "allow" => format!("-A {lint_name}"),
-            "warn" => format!("-W {lint_name}"),
-            "deny" => format!("-D {lint_name}"),
-            _ => {
-                eprintln!(
-                    "Warning: unknown lint level '{}' for '{}' in budget.toml — skipping",
-                    level, lint_name
-                );
-                continue;
+    if let Some(lints) = config.lints {
+        for (lint, level) in lints {
+            if !LINT_NAMES.contains(&lint.as_str()) {
+                return Err(format!(
+                    "Error: Unknown lint name '{}' in {}. Valid lints: {}",
+                    lint,
+                    path,
+                    LINT_NAMES.join(", ")
+                ));
             }
-        };
-        flags.push(flag);
+
+            let level_flag = match level.as_str() {
+                "allow" => Some("-A"),
+                "warn" => Some("-W"),
+                "deny" => Some("-D"),
+                _ => None,
+            };
+
+            if let Some(flag) = level_flag {
+                lint_flags.push(format!("{} {}", flag, lint));
+            } else {
+                return Err(format!(
+                    "Error: Unknown lint level '{}' for '{}' in {}. Valid levels are allow, warn, and deny.",
+                    level, lint, path
+                ));
+            }
+        }
     }
 
-    flags
+    Ok(lint_flags)
 }
 
 fn main() {
@@ -138,6 +213,15 @@ fn main() {
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
     }
+
+    // Handle --version / -V explicitly: clap 4.0's #[command(version)]
+    // displays the version but does not auto-exit, so we must check early
+    // and exit 0 before falling through to the cargo-dylint machinery.
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("cargo-cost-lint {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     let cli = match Cli::try_parse_from(args) {
         Ok(c) => c,
         Err(e) => {
@@ -146,23 +230,32 @@ fn main() {
         }
     };
 
+    if cli.list_lints {
+        for info in LINT_INFO {
+            println!("{}\t{}\t{}", info.name, info.level, info.description);
+        }
+        return;
+    }
+
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags = match &cli.config {
-        Some(config_path) if Path::new(config_path).exists() => {
-            match fs::read_to_string(config_path) {
-                Ok(config_str) => match toml::from_str::<BudgetConfig>(&config_str) {
-                    Ok(config) => lint_config_to_flags(&config.lints, LINT_NAMES),
-                    Err(e) => {
-                        eprintln!("Warning: failed to parse {}: {}", config_path, e);
-                        Vec::new()
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Warning: could not read {}: {}", config_path, e);
-                    Vec::new()
-                }
-            }
+    let lint_flags: Vec<String> = Vec::new();
+    if let Some(config_path) = &cli.config {
+        let _config = Config::from_file_or_default(Path::new(config_path));
+    }
+
+    let preflight = Command::new("cargo")
+        .arg("dylint")
+        .arg("--version")
+        .output();
+
+    match preflight {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("Error: cargo-dylint is not installed or not available in PATH.");
+            eprintln!("Please install it by running:");
+            eprintln!("    cargo install cargo-dylint dylint-link");
+            exit(1);
         }
         Some(config_path) => {
             eprintln!("Warning: config file '{}' not found", config_path);
@@ -203,6 +296,7 @@ fn main() {
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
+    let mut lint_counts: HashMap<String, usize> = HashMap::new();
 
     let mut findings: Vec<LintFinding> = Vec::new();
 
@@ -218,12 +312,12 @@ fn main() {
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let msg_text = message
+                                let diagnostic_message = message
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
                                 let mut file = String::new();
-                                let mut span_obj = Span {
+                                let mut primary_span = Span {
                                     line_start: 0,
                                     line_end: 0,
                                     column_start: 0,
@@ -232,32 +326,33 @@ fn main() {
 
                                 if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
                                 {
-                                    for s in spans {
-                                        if s.get("is_primary")
+                                    for span in spans {
+                                        if span
+                                            .get("is_primary")
                                             .and_then(|p| p.as_bool())
                                             .unwrap_or(false)
                                         {
-                                            file = s
+                                            file = span
                                                 .get("file_name")
                                                 .and_then(|f| f.as_str())
                                                 .unwrap_or("")
                                                 .to_string();
-                                            span_obj.line_start = s
+                                            primary_span.line_start = span
                                                 .get("line_start")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.line_end = s
+                                            primary_span.line_end = span
                                                 .get("line_end")
                                                 .and_then(|l| l.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_start = s
+                                            primary_span.column_start = span
                                                 .get("column_start")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
                                                 as usize;
-                                            span_obj.column_end = s
+                                            primary_span.column_end = span
                                                 .get("column_end")
                                                 .and_then(|c| c.as_u64())
                                                 .unwrap_or(0)
@@ -270,6 +365,8 @@ fn main() {
                                 if !is_reportable(&file, &allowed) {
                                     continue;
                                 }
+
+                                *lint_counts.entry(lint_name.to_string()).or_insert(0) += 1;
 
                                 if level == "error" || level == "deny" {
                                     highest_exit_code = 1;
@@ -302,8 +399,8 @@ fn main() {
                                     name: lint_name.to_string(),
                                     level: level.to_string(),
                                     file: file.clone(),
-                                    span: span_obj,
-                                    message: msg_text.to_string(),
+                                    span: primary_span,
+                                    message: diagnostic_message.to_string(),
                                     help: help_text,
                                     suggestion,
                                 };
@@ -315,11 +412,11 @@ fn main() {
                                     if let Ok(json_str) = serde_json::to_string(finding_json) {
                                         println!("{}", json_str);
                                     }
-                                } else {
+                                } else if cli.format != OutputFormat::Sarif {
                                     let rendered = message
                                         .get("rendered")
                                         .and_then(|r| r.as_str())
-                                        .unwrap_or(msg_text);
+                                        .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
                             }
@@ -334,7 +431,90 @@ fn main() {
         apply_fixes(&findings);
     }
 
+    if cli.format == OutputFormat::Sarif {
+        let package_version = option_env!("CARGO_PKG_VERSION").unwrap_or("0.1.0");
+        let mut rules: Vec<serde_json::Value> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut sarif_results: Vec<SarifResult> = Vec::new();
+
+        for finding in &findings {
+            if seen_rules.insert(finding.name.clone()) {
+                rules.push(serde_json::json!({
+                    "id": finding.name,
+                    "shortDescription": { "text": finding.message }
+                }));
+            }
+
+            let level = match finding.level.as_str() {
+                "error" | "deny" => "error",
+                _ => "warning",
+            };
+
+            let region = if finding.span.line_start > 0 {
+                Some(SarifRegion {
+                    start_line: finding.span.line_start,
+                    start_column: Some(finding.span.column_start),
+                    end_line: Some(finding.span.line_end),
+                    end_column: Some(finding.span.column_end),
+                })
+            } else {
+                None
+            };
+
+            sarif_results.push(SarifResult {
+                rule_id: finding.name.clone(),
+                level: level.to_string(),
+                message: SarifMessage {
+                    text: finding.message.clone(),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: finding.file.clone(),
+                        },
+                        region,
+                    },
+                }],
+            });
+        }
+
+        let sarif = SarifReport {
+            schema: "https://json.schemastore.org/sarif-2.1.0".to_string(),
+            version: "2.1.0".to_string(),
+            runs: vec![SarifRun {
+                tool: SarifTool {
+                    driver: SarifToolDriver {
+                        name: "cargo-cost-lint".to_string(),
+                        version: package_version.to_string(),
+                        information_uri: Some(
+                            "https://github.com/Tollcraft/soroban-cost-linter".to_string(),
+                        ),
+                        rules,
+                    },
+                },
+                results: sarif_results,
+            }],
+        };
+
+        if let Ok(sarif_json) = serde_json::to_string_pretty(&sarif) {
+            println!("{}", sarif_json);
+        }
+    }
+
     let status = child.wait().expect("Failed to wait on cargo dylint");
+
+    // Print per-lint summary to stderr when there are findings
+    if !lint_counts.is_empty() {
+        eprintln!("lint summary:");
+        let mut sorted: Vec<_> = lint_counts.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+        for (name, count) in &sorted {
+            eprintln!("  {}: {}", name, count);
+        }
+        let total: usize = lint_counts.values().sum();
+        eprintln!("total: {}", total);
+    }
+
     if !status.success() {
         exit(status.code().unwrap_or(1));
     } else if highest_exit_code != 0 {
@@ -484,91 +664,80 @@ mod tests {
         assert!(is_reportable("", &allowed));
     }
 
-    // ── lint_config_to_flags tests ──────────────────────────────────────
-
     #[test]
-    fn level_allow_maps_to_a_flag() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "allow".to_string());
-        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
-        assert_eq!(flags, vec!["-A soroban_storage_in_loop"]);
+    fn absent_config_returns_default_lint_levels() {
+        let dir = std::env::temp_dir().join("cost_lint_test_absent");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let result = parse_budget_config(&dir.join("budget.toml").to_string_lossy());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to read"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn level_warn_maps_to_w_flag() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "warn".to_string());
-        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
-        assert_eq!(flags, vec!["-W soroban_storage_in_loop"]);
+    fn unparseable_config_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unparseable");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "this is not valid toml = {{{").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to parse"),
+            "expected parse error, got: {}",
+            err
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn level_deny_maps_to_d_flag() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
-        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
-        assert_eq!(flags, vec!["-D soroban_storage_in_loop"]);
-    }
+    fn valid_config_returns_flags() {
+        let dir = std::env::temp_dir().join("cost_lint_test_valid");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(
+            file,
+            "[lints]\nsoroban_storage_in_loop = \"deny\"\nredundant_env_clone = \"warn\""
+        )
+        .unwrap();
+        drop(file);
 
-    #[test]
-    fn unknown_level_is_skipped() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "invalid".to_string());
-        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
-        assert!(flags.is_empty());
-    }
-
-    #[test]
-    fn unknown_lint_name_is_skipped() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("nonexistent_lint".to_string(), "deny".to_string());
-        let flags = lint_config_to_flags(&Some(lints), &["soroban_storage_in_loop"]);
-        assert!(flags.is_empty());
-    }
-
-    #[test]
-    fn missing_config_none_returns_empty() {
-        let flags = lint_config_to_flags(&None, &["soroban_storage_in_loop"]);
-        assert!(flags.is_empty());
-    }
-
-    #[test]
-    fn empty_lints_table_returns_empty() {
-        let lints = Some(std::collections::HashMap::new());
-        let flags = lint_config_to_flags(&lints, &["soroban_storage_in_loop"]);
-        assert!(flags.is_empty());
-    }
-
-    #[test]
-    fn multiple_valid_lints_produce_multiple_flags() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
-        lints.insert("redundant_env_clone".to_string(), "warn".to_string());
-        let known = &[
-            "soroban_storage_in_loop",
-            "redundant_env_clone",
-            "unnecessary_host_function_call",
-        ];
-        let flags = lint_config_to_flags(&Some(lints), known);
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_ok());
+        let flags = result.unwrap();
         assert_eq!(flags.len(), 2);
         assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
         assert!(flags.contains(&"-W redundant_env_clone".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn mixed_valid_and_invalid_only_produces_valid_flags() {
-        let mut lints = std::collections::HashMap::new();
-        lints.insert("soroban_storage_in_loop".to_string(), "deny".to_string());
-        lints.insert("unknown_lint".to_string(), "warn".to_string());
-        lints.insert(
-            "redundant_env_clone".to_string(),
-            "invalid_level".to_string(),
-        );
-        let known = &["soroban_storage_in_loop", "redundant_env_clone"];
-        let flags = lint_config_to_flags(&Some(lints), known);
-        assert_eq!(flags.len(), 1);
-        assert!(flags.contains(&"-D soroban_storage_in_loop".to_string()));
-        assert!(!flags.contains(&"-W unknown_lint".to_string()));
-        assert!(!flags.contains(&"-W redundant_env_clone".to_string()));
+    fn unknown_level_returns_error() {
+        let dir = std::env::temp_dir().join("cost_lint_test_unknown_level");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("budget.toml");
+        let mut file = fs::File::create(&path).unwrap();
+        writeln!(file, "[lints]\nsoroban_storage_in_loop = \"oops\"").unwrap();
+        drop(file);
+
+        let result = parse_budget_config(&path.to_string_lossy());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Unknown lint level"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
