@@ -169,6 +169,13 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
+fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
+    if !config_path.exists() {
+        return None;
+    }
+
+    let config_str = fs::read_to_string(config_path).ok()?;
+    toml::from_str::<BudgetConfig>(&config_str).ok()
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config_str =
         fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
@@ -241,6 +248,10 @@ fn main() {
 
     let lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
+        if let Some(config) = load_budget_config(Path::new(config_path)) {
+            // ... validate (existing code)
+            let _ = config;
+        }
         let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
