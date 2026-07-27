@@ -475,6 +475,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: SIGNATURE_VERIFICATION_IN_LOOP,
         category: LintCategory::Compute,
     },
+    LintMetadata {
+        lint: VEC_WHERE_SLICE_COULD_BE_USED,
+        category: LintCategory::Memory,
+    },
 ];
 
 /// Dylint entry point: registers every lint and its late pass with the
@@ -498,6 +502,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         MAP_INSERT_IN_LOOP,
         BYTES_APPEND_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
+        VEC_WHERE_SLICE_COULD_BE_USED,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
@@ -511,6 +516,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
+    lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
 }
 
 rustc_session::declare_lint! {
@@ -1374,6 +1380,80 @@ impl<'tcx> LateLintPass<'tcx> for SignatureVerificationInLoop {
                     "each call re-runs an expensive elliptic-curve check; consider a signature \
                      scheme that supports batch or aggregate verification, or move per-item \
                      auth to the callee via a bulk entrypoint",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// vec_where_slice_could_be_used — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub VEC_WHERE_SLICE_COULD_BE_USED,
+    Warn,
+    "soroban_sdk::Vec passed by value where a native Rust slice would suffice"
+}
+pub struct VecWhereSliceCouldBeUsed;
+rustc_session::impl_lint_pass!(VecWhereSliceCouldBeUsed => [VEC_WHERE_SLICE_COULD_BE_USED]);
+
+impl<'tcx> LateLintPass<'tcx> for VecWhereSliceCouldBeUsed {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _: rustc_hir::intravisit::FnKind<'tcx>,
+        _: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _: rustc_span::Span,
+        _: rustc_hir::def_id::LocalDefId,
+    ) {
+        let mutated = mutated_variables(body.value, cx);
+
+        for param in body.params {
+            if let hir::PatKind::Binding(_, hir_id, _ident, _) = param.pat.kind {
+                // The parameter type as seen by the type checker.
+                let ty = cx.typeck_results().node_type(param.hir_id);
+                let peeled = ty.peel_refs();
+
+                // Only flag by-value parameters (not &Vec or &mut Vec).
+                if peeled != ty {
+                    continue;
+                }
+
+                let is_soroban_vec = if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+                    match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Vec"])
+                } else {
+                    false
+                };
+
+                if !is_soroban_vec {
+                    continue;
+                }
+
+                // If the Vec is mutated anywhere in the function body, it
+                // genuinely needs ownership — skip.
+                if let Some(ref mutated) = mutated
+                    && mutated.contains(&hir_id)
+                {
+                    continue;
+                }
+
+                // Known gap: `mutated_variables` tracks explicit mutations
+                // (e.g. `push_back`) but not moves (passing the Vec to
+                // another function by value, or returning it). A function
+                // that moves the Vec elsewhere genuinely consumes it and
+                // should not be flagged, but today it will be. This is
+                // acceptable for an initial implementation — the same
+                // trade-off exists in other lints in this repository.
+                span_lint_and_help(
+                    cx,
+                    VEC_WHERE_SLICE_COULD_BE_USED,
+                    param.span,
+                    "soroban_sdk::Vec parameter could be replaced with a native Rust slice",
+                    None,
+                    "consider using native Rust types (e.g. `&[T]`) instead of \
+                     `soroban_sdk::Vec` for read-only access to reduce host-side operations",
                 );
             }
         }

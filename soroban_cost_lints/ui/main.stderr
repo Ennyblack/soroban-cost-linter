@@ -210,6 +210,31 @@ LL |         v.push_back(i); // Should Warn
    |
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:575:31
+   |
+LL | fn bad_vec_by_value_read_only(v: Vec) {
+   |                               ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+   = note: `#[warn(vec_where_slice_could_be_used)]` on by default
+
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:579:26
+   |
+LL | fn bad_vec_by_value_iter(v: Vec) {
+   |                          ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+
+warning: soroban_sdk::Vec parameter could be replaced with a native Rust slice
+  --> $DIR/main.rs:585:25
+   |
+LL | fn bad_vec_by_value_len(v: Vec) {
+   |                         ^^^^^^
+   |
+   = help: consider using native Rust types (e.g. `&[T]`) instead of `soroban_sdk::Vec` for read-only access to reduce host-side operations
+
 warning: unnecessary host function call inside loop
   --> $DIR/main.rs:454:9
    |
@@ -267,6 +292,6 @@ LL |         env.crypto().ed25519_verify(&pk, &msg, &sig); // Good (allowed)
    |
    = help: call this function outside the loop and reuse the result
 
-warning: 30 warnings emitted
+warning: 33 warnings emitted
 
 warning: 4 warnings emitted
