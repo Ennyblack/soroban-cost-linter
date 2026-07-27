@@ -240,8 +240,7 @@ fn main() {
                                     column_end: 0,
                                 };
 
-                                if let Some(spans) =
-                                    message.get("spans").and_then(|s| s.as_array())
+                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
                                 {
                                     for span in spans {
                                         if span
