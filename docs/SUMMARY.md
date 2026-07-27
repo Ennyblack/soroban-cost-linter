@@ -16,6 +16,7 @@
 
 * [Lint Reference](lints/README.md)
   * [soroban\_storage\_in\_loop](lints/soroban_storage_in_loop.md)
+  * [loop\_invariant\_storage\_access](lints/loop_invariant_storage_access.md)
   * [redundant\_env\_clone](lints/redundant_env_clone.md)
   * [unnecessary\_host\_function\_call](lints/unnecessary_host_function_call.md)
   * [symbol\_new\_for\_short\_literal](lints/symbol_new_for_short_literal.md)

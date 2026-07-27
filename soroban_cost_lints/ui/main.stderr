@@ -16,6 +16,13 @@ LL |         env.storage().instance().set(&i, &1); // Should Warn
    = help: move storage operations out of the loop or accumulate mutations in memory first
    = note: `#[warn(soroban_storage_in_loop)]` on by default
 
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:144:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Should Warn
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
 warning: storage read result is discarded or bound to `_`
   --> $DIR/main.rs:80:30
    |
@@ -64,6 +71,174 @@ LL |         env.storage().instance().set(key, val); // Good (allowed) — diffe
    |                                  ^^^^^^^^^^^^^
    |
    = help: consider reading the value before writing or using `.has()` to check existence
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:158:12
+   |
+LL |         if env.storage().temporary().has(&1) { // Should Warn
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:171:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:171:9
+   |
+LL |         env.storage().instance().set(&i, &1); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:183:9
+   |
+LL |         env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:190:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+   |                                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:197:12
+   |
+LL |         if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:206:9
+   |
+LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:206:9
+   |
+LL |         env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+   |         ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:213:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+   |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:213:33
+   |
+LL |         let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+   |                                 ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:221:12
+   |
+LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: loop-invariant storage operation inside a loop
+  --> $DIR/main.rs:221:12
+   |
+LL |         if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+   |            ^^^^^^^^^^^^^
+   |
+   = help: hoist this storage operation out of the loop
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
+
+warning: storage operation inside a loop
+  --> $DIR/main.rs:236:9
+   |
+LL |         env.storage().instance().set(&"key", &42); // Good (allowed)
+   |         ^^^^^^^^^^^^^
+   |
+   = help: move storage operations out of the loop or accumulate mutations in memory first
 
 warning: redundant clone on Env object
   --> $DIR/main.rs:202:19

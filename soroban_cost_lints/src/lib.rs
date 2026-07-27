@@ -435,6 +435,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: LOOP_INVARIANT_STORAGE_ACCESS,
         lint: UNBOUNDED_INPUT_LOOP,
         category: LintCategory::StorageOperations,
     },
@@ -494,6 +495,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
+        LOOP_INVARIANT_STORAGE_ACCESS,
         UNBOUNDED_INPUT_LOOP,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
@@ -509,6 +511,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         VEC_WHERE_SLICE_COULD_BE_USED,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
+    lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
@@ -608,6 +611,50 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     "storage operation inside a loop (reached through function call)",
                     None,
                     "move storage operations out of the loop or accumulate mutations in memory first",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// loop_invariant_storage_access — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub LOOP_INVARIANT_STORAGE_ACCESS,
+    Warn,
+    "storage operation inside a loop whose operands are provably loop-invariant"
+}
+pub struct LoopInvariantStorageAccess;
+rustc_session::impl_lint_pass!(LoopInvariantStorageAccess => [LOOP_INVARIANT_STORAGE_ACCESS]);
+
+impl<'tcx> LateLintPass<'tcx> for LoopInvariantStorageAccess {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_storage_access = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                matches_any_path(cx, did, SOROBAN_STORAGE_TYPES)
+                    || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
+                        && path_segment.ident.name.as_str() == "storage")
+            } else {
+                false
+            };
+
+            if is_storage_access
+                && let Some(loop_expr) = enclosing_loop(cx, expr)
+                && !depends_on_loop_state(cx, loop_expr, expr)
+            {
+                span_lint_and_help(
+                    cx,
+                    LOOP_INVARIANT_STORAGE_ACCESS,
+                    expr.span,
+                    "loop-invariant storage operation inside a loop",
+                    None,
+                    "hoist this storage operation out of the loop",
                 );
             }
         }

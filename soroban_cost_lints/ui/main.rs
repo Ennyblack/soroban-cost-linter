@@ -218,6 +218,71 @@ fn allowed_storage_through_call_in_loop(env: Env) {
 }
 
 // =======================================================================
+// loop_invariant_storage_access — Fixtures
+// =======================================================================
+
+// soroban_storage_in_loop suppressed so only loop_invariant_storage_access fires
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_write_in_loop(env: Env) {
+    for _i in 0..10 {
+        env.storage().instance().set(&"constant_key", &42); // Should Warn (invariant write)
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_read_in_loop(env: Env) {
+    for _i in 0..10 {
+        let _val: Option<i32> = env.storage().persistent().get(&"constant_key"); // Should Warn (invariant read)
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn bad_invariant_storage_has_in_loop(env: Env) {
+    loop {
+        if env.storage().temporary().has(&"fixed") { // Should Warn (invariant check)
+            break;
+        }
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn good_variant_storage_write_in_loop(env: Env) {
+    for i in 0..10 {
+        env.storage().instance().set(&i, &i); // Good — key and value depend on loop variable
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn good_variant_storage_read_in_loop(env: Env) {
+    for i in 0..10 {
+        let _val: Option<i32> = env.storage().persistent().get(&i); // Good — key depends on loop variable
+    }
+}
+
+#[allow(soroban_storage_in_loop)]
+fn good_variant_storage_has_in_loop(env: Env) {
+    let mut n = 0;
+    while n < 10 {
+        if env.storage().temporary().has(&n) { // Good — key depends on mutated variable
+            n += 1;
+        } else {
+            break;
+        }
+    }
+}
+
+fn good_invariant_storage_outside_loop(env: Env) {
+    env.storage().instance().set(&"key", &42); // Good — not inside a loop
+}
+
+#[allow(loop_invariant_storage_access)]
+fn allowed_invariant_storage_in_loop(env: Env) {
+    for _i in 0..10 {
+        env.storage().instance().set(&"key", &42); // Good (allowed)
+    }
+}
+
+// =======================================================================
 // redundant_env_clone — Fixtures
 // =======================================================================
 
