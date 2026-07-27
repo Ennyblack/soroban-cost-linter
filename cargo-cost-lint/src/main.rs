@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{exit, Command, Stdio};
+use std::process::{Command, Stdio, exit};
 
 mod config;
 use config::Config;
