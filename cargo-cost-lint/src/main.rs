@@ -49,7 +49,7 @@ struct SarifReport {
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
-    results: Vec<serde_json::Value>,
+    results: Vec<SarifResult>,
 }
 
 #[derive(Serialize)]
@@ -64,6 +64,8 @@ struct SarifToolDriver {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "informationUri")]
     information_uri: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<serde_json::Value>,
 }
 
 #[derive(Serialize)]
@@ -221,12 +223,12 @@ fn main() {
                     if let Some(code) = message.get("code") {
                         if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
                             if LINT_NAMES.contains(&lint_name) {
-                                let level = diagnostic
+                                let level = message
                                     .get("level")
                                     .and_then(|l| l.as_str())
                                     .unwrap_or("unknown");
 
-                                let diagnostic_message = diagnostic
+                                let diagnostic_message = message
                                     .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
@@ -239,7 +241,7 @@ fn main() {
                                 };
 
                                 if let Some(spans) =
-                                    diagnostic.get("spans").and_then(|s| s.as_array())
+                                    message.get("spans").and_then(|s| s.as_array())
                                 {
                                     for span in spans {
                                         if span
@@ -312,8 +314,8 @@ fn main() {
                                     name: lint_name.to_string(),
                                     level: level.to_string(),
                                     file: file.clone(),
-                                    span: span_obj,
-                                    message: msg_text.to_string(),
+                                    span: primary_span,
+                                    message: diagnostic_message.to_string(),
                                     help: help_text,
                                     suggestion,
                                 };
