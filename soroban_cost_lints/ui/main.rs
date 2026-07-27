@@ -165,6 +165,9 @@ pub mod soroban_sdk {
 use soroban_sdk::{Bytes, Env, Map, String, Symbol, Vec};
 
 
+use soroban_sdk::Env;
+
+
 // Realistic false-positive scenario: batch-writing different keys per iteration
 #[allow(soroban_storage_in_loop)]
 fn batch_write_different_keys(env: Env, pairs: &[(u32, u32)]) {
