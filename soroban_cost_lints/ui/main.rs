@@ -84,6 +84,9 @@ pub mod soroban_sdk {
         impl Crypto {
             pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
             pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
+            pub fn ed25519_verify(&self, _public_key: &[u8], _message: &[u8], _signature: &[u8]) {}
+            pub fn secp256k1_recover(&self, _msg_digest: &[u8], _signature: &[u8], _recovery_id: u32) -> [u8; 65] { [0; 65] }
+            pub fn secp256r1_verify(&self, _public_key: &[u8], _msg_digest: &[u8], _signature: &[u8]) {}
         }
     }
 
@@ -152,39 +155,6 @@ pub mod soroban_sdk {
 
 use soroban_sdk::{Bytes, Env, Map, Symbol, Vec};
 
-    pub trait IntoVal<E, V> {
-        fn into_val(&self, env: &E) -> V;
-    }
-
-    pub trait TryIntoVal<E, V> {
-        type Error;
-        fn try_into_val(&self, env: &E) -> Result<V, Self::Error>;
-    }
-
-    pub trait FromVal<E, V> {
-        fn from_val(env: &E, v: &V) -> Self;
-    }
-
-    pub trait TryFromVal<E, V>: Sized {
-        type Error;
-        fn try_from_val(env: &E, v: &V) -> Result<Self, Self::Error>;
-    }
-}
-
-// Simple impls for ui tests
-impl soroban_sdk::IntoVal<soroban_sdk::Env, u32> for u32 {
-    fn into_val(&self, _env: &soroban_sdk::Env) -> u32 { *self }
-}
-impl soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val> for u32 {
-    fn into_val(&self, _env: &soroban_sdk::Env) -> soroban_sdk::Val { soroban_sdk::Val }
-}
-impl soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val> for u32 {
-    type Error = ();
-    fn try_from_val(_env: &soroban_sdk::Env, _v: &soroban_sdk::Val) -> Result<Self, Self::Error> { Ok(0) }
-}
-impl soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val> for soroban_sdk::Val {
-    fn into_val(&self, _env: &soroban_sdk::Env) -> soroban_sdk::Val { soroban_sdk::Val }
-}
 
 use soroban_sdk::Env;
 
