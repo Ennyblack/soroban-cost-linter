@@ -207,8 +207,7 @@ fn test_sarif_output() {
         sarif.get("$schema").and_then(|v| v.as_str()),
         Some("https://json.schemastore.org/sarif-2.1.0")
     );
-    assert_eq!(sarif.get("version").and_then(|v| v.as_str()), Some("2.1.0"));
-    let runs = sarif
+    assert_eq!(sarif.get("version").and_then(|v| v.as_str()), Some("2.1.0"));    let runs = sarif
         .get("runs")
         .and_then(|r| r.as_array())
         .expect("Missing runs");
@@ -239,8 +238,7 @@ fn test_sarif_output() {
         assert!(
             result.get("ruleId").is_some(),
             "SARIF result missing ruleId"
-        );
-        assert!(result.get("level").is_some(), "SARIF result missing level");
+        );        assert!(result.get("level").is_some(), "SARIF result missing level");
         assert!(
             result.get("message").is_some(),
             "SARIF result missing message"
