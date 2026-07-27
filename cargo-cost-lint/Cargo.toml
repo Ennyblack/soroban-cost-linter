@@ -3,6 +3,10 @@ name = "cargo-cost-lint"
 version = "0.1.1"
 edition = "2024"
 license = "Apache-2.0"
+repository = "https://github.com/Tollcraft/soroban-cost-linter"
+readme = "../README.md"
+keywords = ["soroban", "stellar", "wasm", "linter", "cost", "cargo"]
+categories = ["development-tools:cargo-plugins"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

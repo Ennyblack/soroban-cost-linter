@@ -125,6 +125,9 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
+    #[arg(long, help = "Emit the lint inventory and exit")]
+    list_lints: bool,
+
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
 
@@ -139,6 +142,7 @@ struct Cli {
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
 
 /// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
 /// canonicalized set of files that are allowed to be linted (i.e. not
