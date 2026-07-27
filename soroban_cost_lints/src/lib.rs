@@ -934,8 +934,8 @@ impl<'tcx> LateLintPass<'tcx> for SymbolNewForShortLiteral {
             if let hir::ExprKind::Lit(lit) = args[1].kind
                 && let LitKind::Str(symbol, _) = lit.node
             {
-                let s = symbol.as_str();
-                if is_valid_short_symbol(s) {
+                let symbol_str = symbol.as_str();
+                if is_valid_short_symbol(symbol_str) {
                     // Check if there's a valid suggestion
                     if let Some(snippet) = snippet_opt(cx, args[1].span) {
                         let suggestion = format!("symbol_short!({})", snippet);
@@ -1255,11 +1255,13 @@ impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
 }
 
 /// Check if a string is a valid short symbol (<= 9 chars, only a-zA-Z0-9_)
-fn is_valid_short_symbol(s: &str) -> bool {
-    if s.len() > 9 || s.is_empty() {
+fn is_valid_short_symbol(symbol_str: &str) -> bool {
+    if symbol_str.len() > 9 || symbol_str.is_empty() {
         return false;
     }
-    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    symbol_str
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 // =======================================================================
