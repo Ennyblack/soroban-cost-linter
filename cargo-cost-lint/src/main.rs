@@ -266,6 +266,7 @@ fn main() {
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
+    let mut lint_counts: HashMap<String, usize> = HashMap::new();
 
     let mut findings: Vec<LintFinding> = Vec::new();
 
@@ -335,6 +336,8 @@ fn main() {
                                 if !is_reportable(&file, &allowed) {
                                     continue;
                                 }
+
+                                *lint_counts.entry(lint_name.to_string()).or_insert(0) += 1;
 
                                 if level == "error" || level == "deny" {
                                     highest_exit_code = 1;
@@ -470,6 +473,19 @@ fn main() {
     }
 
     let status = child.wait().expect("Failed to wait on cargo dylint");
+
+    // Print per-lint summary to stderr when there are findings
+    if !lint_counts.is_empty() {
+        eprintln!("lint summary:");
+        let mut sorted: Vec<_> = lint_counts.iter().collect();
+        sorted.sort_by_key(|(name, _)| *name);
+        for (name, count) in &sorted {
+            eprintln!("  {}: {}", name, count);
+        }
+        let total: usize = lint_counts.values().sum();
+        eprintln!("total: {}", total);
+    }
+
     if !status.success() {
         exit(status.code().unwrap_or(1));
     } else if highest_exit_code != 0 {
