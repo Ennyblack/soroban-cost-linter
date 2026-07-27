@@ -133,7 +133,6 @@ const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "deploy", "DeployerWithAsset"],
 ];
 
-
 /// The accessor methods themselves (`Env::ledger`, `Env::crypto`, ...) are not
 /// listed: they only build a wrapper value, the metered work happens in the
 /// method called on the wrapper. Argument-taking `Env` methods such as
