@@ -489,6 +489,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: VEC_WHERE_SLICE_COULD_BE_USED,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: EXTEND_TTL_IN_LOOP,
+        category: LintCategory::EntryLifecycle,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -516,6 +520,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         SIGNATURE_VERIFICATION_IN_LOOP,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         VEC_WHERE_SLICE_COULD_BE_USED,
+        EXTEND_TTL_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
@@ -532,6 +537,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
+    lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
 }
 
 /// Flags any Soroban storage accessor method call (including
@@ -1727,6 +1733,65 @@ impl<'tcx> LateLintPass<'tcx> for VecWhereSliceCouldBeUsed {
                     None,
                     "consider using native Rust types (e.g. `&[T]`) instead of \
                      `soroban_sdk::Vec` for read-only access to reduce host-side operations",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// extend_ttl_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub EXTEND_TTL_IN_LOOP,
+    Warn,
+    "extend_ttl called inside a loop"
+}
+pub struct ExtendTtlInLoop;
+rustc_session::impl_lint_pass!(ExtendTtlInLoop => [EXTEND_TTL_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for ExtendTtlInLoop {
+    /// Flags a call to `extend_ttl` on instance, persistent, or temporary
+    /// storage when the call site sits directly inside a loop body.
+    ///
+    /// Each `extend_ttl` call is its own metered host call that *also*
+    /// writes ledger state (a rent payment — see
+    /// `docs/cost_rationale.md`, "Ledger Space Rent"), so issuing one per
+    /// iteration multiplies both costs by the iteration count.
+    ///
+    /// This is deliberately narrower than [`SOROBAN_STORAGE_IN_LOOP`]'s
+    /// direct in-loop check: that pass only treats `get`/`has`/`set` as a
+    /// storage access before checking the loop, so `extend_ttl` never
+    /// reaches it and there is no risk of double-reporting the same call.
+    /// This lint owns the `extend_ttl`-in-loop diagnostic.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "extend_ttl"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                matches_any_path(cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+            } else {
+                false
+            };
+
+            if is_storage && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    EXTEND_TTL_IN_LOOP,
+                    expr.span,
+                    "extend_ttl called inside a loop",
+                    None,
+                    "each extend_ttl call is a separate metered host call that also writes \
+                     ledger state, so calling it once per iteration multiplies both costs by \
+                     the iteration count; batch the extension by collecting the keys/entries \
+                     first and making a single extend_ttl call after the loop (if the entries \
+                     share one accessor, e.g. multiple keys under Persistent), or extend once \
+                     with a threshold sized generously enough to cover the whole batch instead \
+                     of refreshing per-entry per-iteration",
                 );
             }
         }
