@@ -1,3 +1,6 @@
+mod module_13;
+mod module_15;
+
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
 use serde::Serialize;
@@ -284,6 +287,7 @@ fn main() {
     }
 
     let allowed = allowed_files(Path::new("."));
+    let lint_name_set = module_15::build_lint_name_set(LINT_NAMES);
 
     let mut lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
