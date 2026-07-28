@@ -27,8 +27,8 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 
 | Lint                                                                  | Default Severity | Catches                                    |
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | `Ledger`, `Crypto`, `Prng`, `Events`, `Deployer` and `Env::current_contract_address` calls repeated inside loops with unchanged inputs |
-| [`require_auth_in_loop`](require_auth_in_loop.md)                     | `warn`           | `Address::require_auth` / `require_auth_for_args` called inside loop bodies |
+| [`soroban_inefficient_bytes_concat`](soroban_inefficient_bytes_concat.md) | `warn`           | Bytes concatenation (`push_back`/`append`) inside loops |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | Redundant host function calls inside loops |
 
 ## Memory
 

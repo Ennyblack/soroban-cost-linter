@@ -99,36 +99,10 @@ pub mod soroban_sdk {
         }
     }
 
-    pub mod crypto {
-        pub struct Crypto;
-        impl Crypto {
-            pub fn sha256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
-            pub fn keccak256(&self, _data: &[u8]) -> [u8; 32] { [0; 32] }
-            pub fn ed25519_verify(&self, _public_key: &[u8], _message: &[u8], _signature: &[u8]) {}
-            pub fn secp256k1_recover(&self, _msg_digest: &[u8], _signature: &[u8], _recovery_id: u32) -> [u8; 65] { [0; 65] }
-            pub fn secp256r1_verify(&self, _public_key: &[u8], _msg_digest: &[u8], _signature: &[u8]) {}
-        }
-    }
-
-    pub mod prng {
-        pub struct Prng;
-        impl Prng {
-            pub fn u64_in_range(&self, _lo: u64, _hi: u64) -> u64 { 0 }
-        }
-    }
-
-    pub mod events {
-        pub struct Events;
-        impl Events {
-            pub fn publish<T, D>(&self, _topics: T, _data: D) {}
-        }
-    }
-
-    pub mod deploy {
-        pub struct Deployer;
-        impl Deployer {
-            pub fn uploaded_wasm_hash(&self) -> [u8; 32] { [0; 32] }
-        }
+    pub struct Bytes;
+    impl Bytes {
+        pub fn push_back(&mut self, _val: u8) {}
+        pub fn append(&mut self, _other: &Bytes) {}
     }
 
     pub mod host {
@@ -456,3 +430,63 @@ fn allowed_persistent_read(env: Env) {
 }
 
 fn main() {}
+
+// =======================================================================
+// soroban_inefficient_bytes_concat — Fixtures
+// =======================================================================
+
+fn bad_bytes_push_back_in_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    for i in 0..10 {
+        bytes.push_back(i as u8); // Should Warn
+    }
+}
+
+fn bad_bytes_append_in_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    let other = soroban_sdk::Bytes;
+    for _ in 0..10 {
+        bytes.append(&other); // Should Warn
+    }
+}
+
+fn bad_bytes_push_back_in_while() {
+    let mut bytes = soroban_sdk::Bytes;
+    let mut i = 0;
+    while i < 10 {
+        bytes.push_back(i as u8); // Should Warn
+        i += 1;
+    }
+}
+
+fn bad_bytes_append_in_loop_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    let other = soroban_sdk::Bytes;
+    loop {
+        bytes.append(&other); // Should Warn
+        break;
+    }
+}
+
+fn good_bytes_concat_outside_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    bytes.push_back(1); // Good — outside loop
+    for _ in 0..10 {
+        let _x = 1;
+    }
+}
+
+fn good_vec_build_then_convert() {
+    let mut v: Vec<u8> = Vec::new();
+    for i in 0..10 {
+        v.push(i as u8); // Good — Vec<u8> is not Bytes
+    }
+}
+
+#[allow(soroban_inefficient_bytes_concat)]
+fn allowed_bytes_concat_in_loop() {
+    let mut bytes = soroban_sdk::Bytes;
+    for i in 0..10 {
+        bytes.push_back(i as u8); // Good (allowed)
+    }
+}
