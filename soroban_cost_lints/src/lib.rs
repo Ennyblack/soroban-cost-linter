@@ -1877,6 +1877,48 @@ impl<'tcx> LateLintPass<'tcx> for PersistentReadWithoutTtlExtension {
     }
 }
 
+// =======================================================================
+// require_auth_in_loop — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub REQUIRE_AUTH_IN_LOOP,
+    Warn,
+    "Address::require_auth or require_auth_for_args called inside a loop"
+}
+pub struct RequireAuthInLoop;
+rustc_session::impl_lint_pass!(RequireAuthInLoop => [REQUIRE_AUTH_IN_LOOP]);
+
+const REQUIRE_AUTH_METHODS: &[&str] = &["require_auth", "require_auth_for_args"];
+
+impl<'tcx> LateLintPass<'tcx> for RequireAuthInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && REQUIRE_AUTH_METHODS.contains(&path_segment.ident.name.as_str())
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_address = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Address"])
+            } else {
+                false
+            };
+
+            if is_address && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    REQUIRE_AUTH_IN_LOOP,
+                    expr.span,
+                    "authorization call inside a loop",
+                    None,
+                    "collect distinct addresses first and authorize each once before the loop",
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn ui() {
     dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");

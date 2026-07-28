@@ -25,10 +25,10 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 
 ## CPU/Compute
 
-| Lint | Default Severity | Catches |
-| --- | --- | --- |
-| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
-| [`host_in_loop`](host_in_loop.md) | `warn` | use of Host object inside a loop |
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn`           | `Ledger`, `Crypto`, `Prng`, `Events`, `Deployer` and `Env::current_contract_address` calls repeated inside loops with unchanged inputs |
+| [`require_auth_in_loop`](require_auth_in_loop.md)                     | `warn`           | `Address::require_auth` / `require_auth_for_args` called inside loop bodies |
 
 ## Memory
 

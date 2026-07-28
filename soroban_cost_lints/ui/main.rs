@@ -41,6 +41,10 @@ pub mod soroban_sdk {
     }
 
     pub struct Address;
+    impl Address {
+        pub fn require_auth(&self) {}
+        pub fn require_auth_for_args(&self, _args: &[Env]) {}
+    }
 
     pub struct String;
     impl Clone for String {
