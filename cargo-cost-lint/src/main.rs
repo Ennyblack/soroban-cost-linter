@@ -13,18 +13,13 @@ use std::process::{Command, Stdio, exit};
 mod config;
 use config::BudgetConfig;
 
-/// Output format for lint results.
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum OutputFormat {
-    /// Human-readable text output (default).
     Text,
-    /// Newline-delimited JSON objects.
     Json,
-    /// SARIF 2.1.0 JSON report.
     Sarif,
 }
 
-/// Source-location span for a lint finding.
 #[derive(Serialize, Debug)]
 struct Span {
     line_start: usize,
@@ -33,7 +28,6 @@ struct Span {
     column_end: usize,
 }
 
-/// A single lint finding produced by `cargo dylint`.
 #[derive(Serialize, Debug)]
 struct LintFinding {
     name: String,
@@ -47,7 +41,6 @@ struct LintFinding {
     suggestion: Option<String>,
 }
 
-/// SARIF 2.1.0 report root.
 #[derive(Serialize)]
 struct SarifReport {
     #[serde(rename = "$schema")]
@@ -56,20 +49,17 @@ struct SarifReport {
     runs: Vec<SarifRun>,
 }
 
-/// A single SARIF run (one invocation of the linter).
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
     results: Vec<SarifResult>,
 }
 
-/// Tool metadata for SARIF output.
 #[derive(Serialize)]
 struct SarifTool {
     driver: SarifToolDriver,
 }
 
-/// Tool-driver metadata for SARIF output.
 #[allow(non_snake_case)]
 #[derive(Serialize)]
 struct SarifToolDriver {
@@ -82,7 +72,6 @@ struct SarifToolDriver {
     rules: Vec<serde_json::Value>,
 }
 
-/// A single SARIF result (one lint finding).
 #[derive(Serialize)]
 struct SarifResult {
     #[serde(rename = "ruleId")]
@@ -92,20 +81,17 @@ struct SarifResult {
     locations: Vec<SarifLocation>,
 }
 
-/// SARIF message text.
 #[derive(Serialize)]
 struct SarifMessage {
     text: String,
 }
 
-/// SARIF location referencing a physical file.
 #[derive(Serialize)]
 struct SarifLocation {
     #[serde(rename = "physicalLocation")]
     physical_location: SarifPhysicalLocation,
 }
 
-/// SARIF physical location in a file.
 #[derive(Serialize)]
 struct SarifPhysicalLocation {
     #[serde(rename = "artifactLocation")]
@@ -114,13 +100,11 @@ struct SarifPhysicalLocation {
     region: Option<SarifRegion>,
 }
 
-/// SARIF artifact location (file URI).
 #[derive(Serialize)]
 struct SarifArtifactLocation {
     uri: String,
 }
 
-/// SARIF region (line/column range within a file).
 #[derive(Serialize)]
 struct SarifRegion {
     #[serde(rename = "startLine")]
@@ -136,11 +120,6 @@ struct SarifRegion {
     end_column: Option<usize>,
 }
 
-/// CLI arguments for `cargo-cost-lint`.
-///
-/// This struct is parsed by `clap` from the command-line invocation.  It
-/// wraps `cargo dylint` with additional filtering, formatting, and
-/// fix-application logic.
 #[derive(Parser, Debug)]
 #[command(name = "cargo-cost-lint")]
 #[command(version)]
@@ -473,12 +452,7 @@ fn main() {
                                         .unwrap_or(diagnostic_message);
                                     print!("{}", rendered);
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+                                }
     }
 
     if cli.fix {
@@ -596,11 +570,10 @@ fn apply_fixes(findings: &[LintFinding]) {
         std::collections::HashMap::new();
 
     for finding in findings {
-        if let Some(ref suggestion) = finding.suggestion {
+        if let Some(ref suggestion) = finding.suggestion
+            && !finding.file.is_empty()
+        {
             let file = finding.file.clone();
-            if file.is_empty() {
-                continue;
-            }
             let line_idx = finding.span.line_start;
             file_edits.entry(file).or_default().push((
                 line_idx,
@@ -614,7 +587,11 @@ fn apply_fixes(findings: &[LintFinding]) {
         if let Ok(content) = fs::read_to_string(file_path) {
             let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
             for (line_idx, _message, suggestion) in edits {
-                if *line_idx > 0 && *line_idx <= lines.len() {
+                if *line_idx > 0
+                    && *line_idx <= lines.len()
+                    && let Some(start) = lines[*line_idx - 1].find("Symbol::new")
+                    && let Some(end) = lines[*line_idx - 1][start..].find(')')
+                {
                     let line = &mut lines[*line_idx - 1];
                     if let Some(start) = line.find("Symbol::new")
                         && let Some(end) = line[start..].find(')')

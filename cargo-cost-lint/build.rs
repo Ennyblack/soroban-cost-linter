@@ -236,14 +236,6 @@ fn main() {
     let info_path = Path::new(&out_dir).join("lint_info.rs");
     let explanations_path = Path::new(&out_dir).join("lint_explanations.rs");
 
-    let mut names_out = String::new();
-    names_out.push_str("pub const LINT_NAMES: &[&str] = &[\n");
-    for name in &names {
-        names_out.push_str(&format!("    \"{}\",\n", name));
-    }
-    names_out.push_str("];\n");
-    fs::write(&names_path, names_out).expect("Failed to write lint_names.rs");
-
     let mut metadata_out = String::new();
     metadata_out.push_str("#[derive(Serialize, Debug)]\npub struct LintInventoryEntry {\n");
     metadata_out.push_str("    pub name: &'static str,\n");
@@ -280,6 +272,8 @@ fn main() {
     }
     info_out.push_str("];\n");
     fs::write(&info_path, info_out).expect("Failed to write lint_info.rs");
+
+    fs::write(&names_path, &out).expect("Failed to write lint_names.rs");
 
     metadata_out.push_str("    ],\n");
     metadata_out.push_str("};\n");
