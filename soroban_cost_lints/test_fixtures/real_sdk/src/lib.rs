@@ -57,33 +57,37 @@ fn good_host_outside_loop(env: Env) {
 }
 
 // =======================================================================
-// soroban_inefficient_bytes_concat — Fixtures
+// soroban_redundant_storage_read — Fixtures
 // =======================================================================
 
-fn bad_bytes_push_back_in_loop(env: Env) {
-    let mut bytes = soroban_sdk::Bytes::new(&env);
-    for i in 0..10 {
-        bytes.push_back(i as u8); // Should Warn
-    }
+fn bad_sequential_get_same_key(env: Env) {
+    let key = 1u32;
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
 }
 
-fn bad_bytes_append_in_loop(env: Env) {
-    let mut bytes = soroban_sdk::Bytes::new(&env);
-    let other = soroban_sdk::Bytes::new(&env);
-    for _ in 0..10 {
-        bytes.append(&other); // Should Warn
-    }
+fn bad_sequential_has_then_get(env: Env) {
+    let key = 1u32;
+    let _a = env.storage().instance().has(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
 }
 
-fn good_bytes_concat_outside_loop(env: Env) {
-    let mut bytes = soroban_sdk::Bytes::new(&env);
-    bytes.push_back(1); // Good — outside loop
+fn bad_sequential_has_then_has(env: Env) {
+    let key = 1u32;
+    let _a = env.storage().instance().has(&key);
+    let _b = env.storage().instance().has(&key); // Should Warn
 }
 
-fn good_vec_build_then_convert(env: Env) {
-    let mut v: Vec<u8> = Vec::new();
-    for i in 0..10 {
-        v.push(i as u8); // Good — Vec<u8> is not Bytes
-    }
-    let _bytes = soroban_sdk::Bytes::from_slice(&env, &v);
+fn good_different_keys(env: Env) {
+    let key1 = 1u32;
+    let key2 = 2u32;
+    let _a: Option<i32> = env.storage().instance().get(&key1);
+    let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
+}
+
+fn good_write_resets(env: Env) {
+    let key = 1u32;
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    env.storage().instance().set(&key, &1i32);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
 }

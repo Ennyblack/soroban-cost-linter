@@ -432,61 +432,51 @@ fn allowed_persistent_read(env: Env) {
 fn main() {}
 
 // =======================================================================
-// soroban_inefficient_bytes_concat — Fixtures
+// soroban_redundant_storage_read — Fixtures
 // =======================================================================
 
-fn bad_bytes_push_back_in_loop() {
-    let mut bytes = soroban_sdk::Bytes;
-    for i in 0..10 {
-        bytes.push_back(i as u8); // Should Warn
-    }
+fn bad_sequential_get_same_key(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Should Warn
 }
 
-fn bad_bytes_append_in_loop() {
-    let mut bytes = soroban_sdk::Bytes;
-    let other = soroban_sdk::Bytes;
-    for _ in 0..10 {
-        bytes.append(&other); // Should Warn
-    }
+fn bad_sequential_has_then_get(env: Env, key: i32) {
+    let exists = env.storage().instance().has(&key);
+    let _val: Option<i32> = env.storage().instance().get(&key); // Should Warn
 }
 
-fn bad_bytes_push_back_in_while() {
-    let mut bytes = soroban_sdk::Bytes;
-    let mut i = 0;
-    while i < 10 {
-        bytes.push_back(i as u8); // Should Warn
-        i += 1;
-    }
+fn bad_sequential_has_then_has(env: Env, key: i32) {
+    let _a = env.storage().instance().has(&key);
+    let _b = env.storage().instance().has(&key); // Should Warn
 }
 
-fn bad_bytes_append_in_loop_loop() {
-    let mut bytes = soroban_sdk::Bytes;
-    let other = soroban_sdk::Bytes;
-    loop {
-        bytes.append(&other); // Should Warn
-        break;
-    }
+fn bad_sequential_persistent_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().persistent().get(&key);
+    let _b: Option<i32> = env.storage().persistent().get(&key); // Should Warn
 }
 
-fn good_bytes_concat_outside_loop() {
-    let mut bytes = soroban_sdk::Bytes;
-    bytes.push_back(1); // Good — outside loop
-    for _ in 0..10 {
-        let _x = 1;
-    }
+fn bad_sequential_temporary_get(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().temporary().get(&key);
+    let _b: Option<i32> = env.storage().temporary().get(&key); // Should Warn
 }
 
-fn good_vec_build_then_convert() {
-    let mut v: Vec<u8> = Vec::new();
-    for i in 0..10 {
-        v.push(i as u8); // Good — Vec<u8> is not Bytes
-    }
+fn good_set_resets_tracking(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    env.storage().instance().set(&key, &1);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good — write in between
 }
 
-#[allow(soroban_inefficient_bytes_concat)]
-fn allowed_bytes_concat_in_loop() {
-    let mut bytes = soroban_sdk::Bytes;
-    for i in 0..10 {
-        bytes.push_back(i as u8); // Good (allowed)
-    }
+fn good_different_keys(env: Env, key1: i32, key2: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key1);
+    let _b: Option<i32> = env.storage().instance().get(&key2); // Good — different key
+}
+
+fn good_single_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key); // Good — only one read
+}
+
+#[allow(soroban_redundant_storage_read)]
+fn allowed_sequential_read(env: Env, key: i32) {
+    let _a: Option<i32> = env.storage().instance().get(&key);
+    let _b: Option<i32> = env.storage().instance().get(&key); // Good (allowed)
 }

@@ -19,9 +19,10 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 
 ## Storage Operations
 
-| Lint | Default Severity | Catches |
-| --- | --- | --- |
-| [`soroban_storage_in_loop`](soroban_storage_in_loop.md) | `warn` | storage operations inside a loop |
+| Lint                                                                  | Default Severity | Catches                                    |
+| --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`soroban_storage_in_loop`](soroban_storage_in_loop.md)               | `warn`           | Storage reads/writes inside loop bodies    |
+| [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn`           | Multiple sequential reads of the same key  |
 
 ## CPU/Compute
 
