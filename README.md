@@ -133,29 +133,13 @@ From the root of your Soroban contract workspace:
 cargo cost-lint
 ```
 
-### Listing available lints
-
-To see which lints are registered and their default levels:
+To inspect the machine-readable lint inventory that the CLI emits, run:
 
 ```bash
-cargo cost-lint --list-lints
+cargo cost-lint --list-lints --format json
 ```
 
-Output is tab-separated for easy parsing:
-
-```text
-soroban_storage_in_loop	warn	storage operations inside a loop
-redundant_env_clone	warn	redundant clone on Env object
-unnecessary_host_function_call	warn	unnecessary host function call inside loop
-host_in_loop	warn	use of Host object inside a loop
-symbol_new_for_short_literal	warn	Symbol::new used with a short literal that could use symbol_short! macro
-```
-
-### Checking the installed version
-
-```bash
-cargo cost-lint --version
-```
+The output is a versioned JSON object with the lint name, default level, description, category, and documentation URL for every registered lint.
 
 The linter will analyze all Rust source files and report any Soroban anti-patterns it finds. The output looks like this:
 
