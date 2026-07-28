@@ -1,14 +1,14 @@
 use clap::{Parser, ValueEnum};
 use ignore::WalkBuilder;
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
 mod config;
-use config::Config;
+use config::BudgetConfig;
 
 /// Output format for lint results.
 #[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
@@ -57,7 +57,7 @@ struct SarifReport {
 #[derive(Serialize)]
 struct SarifRun {
     tool: SarifTool,
-    results: Vec<serde_json::Value>,
+    results: Vec<SarifResult>,
 }
 
 /// Tool metadata for SARIF output.
@@ -146,7 +146,10 @@ struct Cli {
     #[arg(long, help = "Path to budget.toml")]
     config: Option<String>,
 
-    #[arg(long, help = "Emit the lint inventory and exit")]
+    #[arg(
+        long,
+        help = "List all registered lints with their default levels and descriptions"
+    )]
     list_lints: bool,
 
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
@@ -154,16 +157,11 @@ struct Cli {
 
     #[arg(long, help = "Automatically apply fixable lint suggestions")]
     fix: bool,
-
-    #[arg(
-        long,
-        help = "List all registered lints with their default levels and descriptions"
-    )]
-    list_lints: bool,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 
 /// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
 /// canonicalized set of files that are allowed to be linted (i.e. not
@@ -192,15 +190,6 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
         Ok(canon) => allowed.contains(&canon),
         Err(_) => true,
     }
-}
-
-fn load_budget_config(config_path: &Path) -> Option<BudgetConfig> {
-    if !config_path.exists() {
-        return None;
-    }
-
-    let config_str = fs::read_to_string(config_path).ok()?;
-    toml::from_str::<BudgetConfig>(&config_str).ok()
 }
 
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
@@ -242,6 +231,7 @@ fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     Ok(lint_flags)
 }
 
+#[allow(clippy::collapsible_if)]
 fn main() {
     let mut args = std::env::args().collect::<Vec<_>>();
     if args.len() > 1 && args[1] == "cost-lint" {
@@ -273,13 +263,15 @@ fn main() {
 
     let allowed = allowed_files(Path::new("."));
 
-    let lint_flags: Vec<String> = Vec::new();
+    let mut lint_flags: Vec<String> = Vec::new();
     if let Some(config_path) = &cli.config {
-        if let Some(config) = load_budget_config(Path::new(config_path)) {
-            // ... validate (existing code)
-            let _ = config;
+        match parse_budget_config(config_path) {
+            Ok(flags) => lint_flags = flags,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(1);
+            }
         }
-        let _config = Config::from_file_or_default(Path::new(config_path));
     }
 
     let preflight = Command::new("cargo")
@@ -295,11 +287,6 @@ fn main() {
             eprintln!("    cargo install cargo-dylint dylint-link");
             exit(1);
         }
-        Some(config_path) => {
-            eprintln!("Warning: config file '{}' not found", config_path);
-            Vec::new()
-        }
-        None => Vec::new(),
     };
 
     let mut cmd = Command::new("cargo");
@@ -603,11 +590,11 @@ fn apply_fixes(findings: &[LintFinding]) {
             for (line_idx, _message, suggestion) in edits {
                 if *line_idx > 0 && *line_idx <= lines.len() {
                     let line = &mut lines[*line_idx - 1];
-                    if let Some(start) = line.find("Symbol::new") {
-                        if let Some(end) = line[start..].find(')') {
-                            let replace_end = start + end + 1;
-                            line.replace_range(start..replace_end, suggestion);
-                        }
+                    if let Some(start) = line.find("Symbol::new")
+                        && let Some(end) = line[start..].find(')')
+                    {
+                        let replace_end = start + end + 1;
+                        line.replace_range(start..replace_end, suggestion);
                     }
                 }
             }
@@ -725,7 +712,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("budget.toml");
         let mut file = fs::File::create(&path).unwrap();
-        writeln!(file, "this is not valid toml = {{{").unwrap();
+        writeln!(file, "this is not valid toml = {{{{{{").unwrap();
         drop(file);
 
         let result = parse_budget_config(&path.to_string_lossy());
