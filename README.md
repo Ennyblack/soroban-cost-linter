@@ -49,7 +49,13 @@ Both tools share configuration via a unified `budget.toml` file for thresholds a
 
 ### Prerequisites
 
-Since `soroban-cost-linter` hooks directly into Rust's AST, its lint library links against `rustc_private` and therefore **must be built with the same nightly toolchain** that the project pins. The exact channel is declared in the [`rust-toolchain`](rust-toolchain) file at the repository root.
+> **Windows users:** the project CI runs on Ubuntu. For the smoothest setup,
+> prefer **WSL2 with Ubuntu** — see
+> [docs/windows_setup.md](docs/windows_setup.md). Native-PowerShell install is
+> covered in the same page; **Visual Studio Build Tools is required** because
+> the MSVC `rustc` toolchain needs `link.exe` (which Build Tools provides).
+
+Since `soroban-cost-linter` hooks directly into Rust's AST, it relies on [Dylint](https://github.com/trailofbits/dylint) to run dynamic library lints. The linter library requires Dylint version `^6.0.1`.
 
 1. **Install the pinned nightly toolchain** — see the [`rust-toolchain`](rust-toolchain) file for the exact channel (as of this writing, the CI uses `nightly-2026-04-16`).
 
@@ -348,7 +354,8 @@ We are actively looking for contributors in cost-model research, AST parsing, an
 3. Ensure all Pull Requests target the `main` branch.
 4. Pass all local tests before submitting.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution requirements. If you are writing your first custom Dylint lint, read the [How to add a new lint developer guide](DEVELOPING_LINTS.md) for a step-by-step walkthrough of lint registration, HIR matching, UI tests, and `clippy_utils`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detailed guidelines.
+**Windows contributors**, start with [docs/windows_setup.md](docs/windows_setup.md) for WSL2 and native-PowerShell setup instructions.
 
 ## Community
 

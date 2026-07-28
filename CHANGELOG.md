@@ -15,6 +15,7 @@ and this project adheres to Semantic Versioning.
 - New lint `map_insert_in_loop` detecting `Map::insert()` calls inside loop bodies.
 - New lint `signature_verification_in_loop` detecting `env.crypto().ed25519_verify()`/`secp256k1_recover()`/`secp256r1_verify()` calls inside loop bodies, suggesting batch/aggregate signature verification or a bulk callee entrypoint instead.
 - `--fix` flag for `cargo-cost-lint` to automatically apply machine-applicable lint suggestions in-place.
+- `docs/windows_setup.md` covering WSL2 (recommended) and native-PowerShell install, PATH setup, prerequisites (Visual Studio Build Tools, MSVC toolchain, long path support), and common Windows-specific issues. Linked from `CONTRIBUTING.md`, `README.md`, and the `docs/SUMMARY.md` TOC.
 
 ### Fixed
 
