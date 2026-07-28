@@ -725,10 +725,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
             && path_segment.ident.name.as_str() == "clone"
         {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+            let is_env = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
                 match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
             } else {
                 false
@@ -736,6 +733,7 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
 
             if is_env {
                 // Clone on &Env produces an owned Env from a reference — genuinely needed.
+                let receiver_ty = cx.typeck_results().expr_ty(receiver);
                 let (_inner, ref_count, _) = peel_and_count_ty_refs(receiver_ty);
                 if ref_count > 0 {
                     return;
@@ -815,10 +813,7 @@ impl<'tcx> LateLintPass<'tcx> for UnnecessaryHostFunctionCall {
     /// change each iteration from being flagged.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_host_function = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+            let is_host_function = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
                 let did = adt_def.did();
                 matches_any_path(cx, did, SOROBAN_HOST_TYPES)
                     || (match_soroban_def_path(cx, did, &["soroban_sdk", "Env"])
@@ -864,10 +859,7 @@ impl<'tcx> LateLintPass<'tcx> for HostInLoop {
     /// help note suggesting the call be moved out where possible.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         if let hir::ExprKind::MethodCall(_path_segment, receiver, _args, _span) = expr.kind {
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_host = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+            let is_host = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
                 match_soroban_def_path(cx, adt_def.did(), &["host", "Host"])
             } else {
                 false
@@ -1277,10 +1269,7 @@ impl<'tcx> LateLintPass<'tcx> for BytesAppendInLoop {
                 return;
             }
 
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_container = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+            let is_container = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
                 matches_any_path(cx, adt_def.did(), SOROBAN_CONTAINER_TYPES)
             } else {
                 false
@@ -1355,10 +1344,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             /// `has` call on a [`SOROBAN_STORAGE_TYPES`] receiver.
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
-                    let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
-                    let peeled_ty = receiver_ty.peel_refs();
-
-                    let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                    let is_storage = if let Some(adt_def) = try_get_adt_def(self.cx, receiver) {
                         matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
@@ -1391,10 +1377,7 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
             /// `set` call on a [`SOROBAN_STORAGE_TYPES`] receiver.
             fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
                 if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
-                    let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
-                    let peeled_ty = receiver_ty.peel_refs();
-
-                    let is_storage = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                    let is_storage = if let Some(adt_def) = try_get_adt_def(self.cx, receiver) {
                         matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
                     } else {
                         false
@@ -1481,10 +1464,19 @@ impl<'tcx> LateLintPass<'tcx> for InefficientBytesConcat {
 }
 
 fn is_bytes_type<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-    if let rustc_middle::ty::Adt(adt_def, _) = ty.kind() {
+    if let Some(adt_def) = ty_adt_def(ty) {
         match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Bytes"])
     } else {
         false
+    }
+}
+
+/// Extracts the `AdtDef` from a `Ty`, without peeling references.
+fn ty_adt_def<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> Option<rustc_middle::ty::AdtDef<'tcx>> {
+    if let rustc_middle::ty::Adt(adt_def, _) = ty.kind() {
+        Some(adt_def)
+    } else {
+        None
     }
 }
 
@@ -1515,10 +1507,7 @@ impl<'tcx> LateLintPass<'tcx> for MapInsertInLoop {
                 return;
             }
 
-            let receiver_ty = cx.typeck_results().expr_ty(receiver);
-            let peeled_ty = receiver_ty.peel_refs();
-
-            let is_map = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+            let is_map = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
                 match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Map"])
             } else {
                 false
