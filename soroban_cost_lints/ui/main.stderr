@@ -298,6 +298,31 @@ LL |         let _seq = env.ledger().sequence(); // Should Warn — called once 
    |
    = help: call this function outside the loop and reuse the result
 
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:313:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+   = note: `#[warn(contract_call_in_loop)]` on by default
+
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:320:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
+warning: cross-contract call inside a loop
+  --> $DIR/main.rs:327:22
+   |
+LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
+
 warning: unnecessary String to Bytes conversion
   --> $DIR/main.rs:316:14
    |

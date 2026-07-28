@@ -299,6 +299,28 @@ for _ in 0..10 {
 }
 ```
 
+### Example: cross-contract call in a loop
+
+**Bad** &mdash; invoking another contract on every iteration re-instantiates its VM context each time:
+
+```rust
+// ❌ Triggers: contract_call_in_loop
+for item in items.iter() {
+    let _: i128 = env.invoke_contract(&token_address, &symbol_short!("balance"), (item,).into_val(&env));
+}
+```
+
+**Fix** &mdash; add a batched endpoint on the callee, or call once and reuse the result if it's invariant:
+
+```rust
+// ✅ Fixed: a single batched call
+let balances: Vec<i128> = env.invoke_contract(
+    &token_address,
+    &symbol_short!("balances"),
+    (items.clone(),).into_val(&env),
+);
+```
+
 ### Suppressing false positives
 
 If a flagged pattern is intentional, suppress it with a standard Rust attribute:
@@ -351,7 +373,7 @@ unnecessary_host_function_call = "warn"
 storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
-extend_ttl_in_loop = "warn"
+contract_call_in_loop = "warn"
 
 Inline diagnostics are supported through rust-analyzer's `check.overrideCommand` setting:
 
