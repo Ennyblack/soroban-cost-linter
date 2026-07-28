@@ -53,6 +53,12 @@ Lints are classified per the [MVP roadmap](../roadmap_mvp.md#3-false-positive-mi
 | --------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md)                         | `warn`           | `extend_ttl` calls on instance/persistent/temporary storage inside loops |
 
+## Entry Lifecycle
+
+| Lint                                                                                          | Default Severity | Catches                                    |
+| --------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------ |
+| [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md)           | `warn`           | Persistent reads without matching TTL extension |
+
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}

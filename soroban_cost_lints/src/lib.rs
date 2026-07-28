@@ -473,8 +473,8 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::SymbolOperations,
     },
     LintMetadata {
-        lint: LINEAR_SCAN_IN_LOOP,
-        category: LintCategory::Compute,
+        lint: PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
+        category: LintCategory::EntryLifecycle,
     },
 ];
 
@@ -495,7 +495,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
-        LINEAR_SCAN_IN_LOOP,
+        PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
@@ -504,7 +504,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
-    lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
+    lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
 }
 
 /// Flags any Soroban storage accessor method call (including
@@ -1796,6 +1796,83 @@ impl<'tcx> LateLintPass<'tcx> for LinearScanInLoop {
                     "consider building a Map lookup outside the loop for O(1) access",
                 );
             }
+        }
+    }
+}
+
+// =======================================================================
+// persistent_read_without_ttl_extension — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
+    Warn,
+    "persistent storage read without TTL extension — archival cost cliff"
+}
+pub struct PersistentReadWithoutTtlExtension;
+rustc_session::impl_lint_pass!(PersistentReadWithoutTtlExtension => [PERSISTENT_READ_WITHOUT_TTL_EXTENSION]);
+
+struct PersistentReadVisitor<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    reads: Vec<&'tcx hir::Expr<'tcx>>,
+    extend_ttl_found: bool,
+}
+
+impl<'tcx> Visitor<'tcx> for PersistentReadVisitor<'_, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            let receiver_ty = self.cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                if match_soroban_def_path(self.cx, adt_def.did(), &["soroban_sdk", "storage", "Persistent"]) {
+                    match method_name {
+                        "get" | "has" => {
+                            self.reads.push(expr);
+                        }
+                        "extend_ttl" => {
+                            self.extend_ttl_found = true;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+impl<'tcx> LateLintPass<'tcx> for PersistentReadWithoutTtlExtension {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _kind: intravisit::FnKind<'tcx>,
+        _decl: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        _hir_id: rustc_hir::HirId,
+    ) {
+        let mut visitor = PersistentReadVisitor {
+            cx,
+            reads: Vec::new(),
+            extend_ttl_found: false,
+        };
+        visitor.visit_body(body);
+
+        if visitor.extend_ttl_found || visitor.reads.is_empty() {
+            return;
+        }
+
+        for read_expr in &visitor.reads {
+            span_lint_and_help(
+                cx,
+                PERSISTENT_READ_WITHOUT_TTL_EXTENSION,
+                read_expr.span,
+                "persistent storage read without TTL extension — archival cost cliff",
+                None,
+                "after reading from persistent storage, call extend_ttl on the same key to avoid paying archival cost on subsequent access",
+            );
         }
     }
 }

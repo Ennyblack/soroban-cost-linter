@@ -68,9 +68,10 @@ pub mod soroban_sdk {
 
         pub struct Persistent;
         impl Persistent {
-            pub fn get<K: ?Sized, V>(&self, _k: &K) -> Option<V> { None }
-            pub fn set<K: ?Sized, V>(&self, _k: &K, _v: &V) {}
-            pub fn has<K: ?Sized>(&self, _k: &K) -> bool { false }
+            pub fn get<K, V>(&self, _k: &K) -> Option<V> { None }
+            pub fn set<K, V>(&self, _k: &K, _v: &V) {}
+            pub fn has<K>(&self, _k: &K) -> bool { false }
+            pub fn extend_ttl<K>(&self, _k: &K, _threshold: &()) {}
         }
 
         pub struct Temporary;
@@ -378,30 +379,34 @@ fn allowed_symbol_new_short_literal(env: Env) {
 }
 
 // =======================================================================
-// linear_scan_in_loop — Fixtures
+// persistent_read_without_ttl_extension — Fixtures
 // =======================================================================
 
-fn bad_linear_scan_in_for_loop(env: Env, items: Vec<i32>, target: i32) {
-    for _i in 0..10 {
-        let _found = items.contains(&target); // Should Warn — constant scan of same collection
+fn bad_persistent_read_no_ttl_extension(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Should Warn
+}
+
+fn bad_persistent_has_no_ttl_extension(env: Env) {
+    if env.storage().persistent().has(&1) { // Should Warn
     }
 }
 
-fn good_linear_scan_with_loop_variable(env: Env, items: Vec<i32>) {
-    for item in 0..10 {
-        let _found = items.contains(&item); // Good — argument changes per iteration
-    }
+fn good_persistent_read_with_ttl_extension(env: Env) {
+    env.storage().persistent().extend_ttl(&1, &());
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good
 }
 
-fn good_no_loop_linear_scan(env: Env, items: Vec<i32>, target: i32) {
-    let _found = items.contains(&target); // Good — no loop
+fn good_instance_read(env: Env) {
+    let _val: Option<i32> = env.storage().instance().get(&1); // Good — not persistent
 }
 
-#[allow(linear_scan_in_loop)]
-fn allowed_linear_scan_in_loop(env: Env, items: Vec<i32>, target: i32) {
-    for _i in 0..10 {
-        let _found = items.contains(&target); // Good (allowed)
-    }
+fn good_temporary_read(env: Env) {
+    let _val: Option<i32> = env.storage().temporary().get(&1); // Good — not persistent
+}
+
+#[allow(persistent_read_without_ttl_extension)]
+fn allowed_persistent_read(env: Env) {
+    let _val: Option<i32> = env.storage().persistent().get(&1); // Good (allowed)
 }
 
 fn main() {}
