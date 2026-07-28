@@ -192,39 +192,23 @@ fn is_reportable(file: &str, allowed: &HashSet<PathBuf>) -> bool {
     }
 }
 
+/// Loads `path` as a validated `BudgetConfig` and formats its `[lints]`
+/// entries into `-A`/`-W`/`-D` flags for `DYLINT_RUSTFLAGS`. Validation
+/// (unknown lint names, invalid levels) is handled by
+/// `BudgetConfig::from_file_validated`, the single canonical config parser.
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
-    let config_str =
-        fs::read_to_string(path).map_err(|e| format!("Error: Failed to read {}: {}", path, e))?;
-    let config: BudgetConfig = toml::from_str(&config_str)
-        .map_err(|e| format!("Error: Failed to parse {}: {}", path, e))?;
-    let mut lint_flags = Vec::new();
+    let config = BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
 
+    let mut lint_flags = Vec::new();
     if let Some(lints) = config.lints {
         for (lint, level) in lints {
-            if !LINT_NAMES.contains(&lint.as_str()) {
-                return Err(format!(
-                    "Error: Unknown lint name '{}' in {}. Valid lints: {}",
-                    lint,
-                    path,
-                    LINT_NAMES.join(", ")
-                ));
-            }
-
-            let level_flag = match level.as_str() {
-                "allow" => Some("-A"),
-                "warn" => Some("-W"),
-                "deny" => Some("-D"),
-                _ => None,
+            let flag = match level.as_str() {
+                "allow" => "-A",
+                "warn" => "-W",
+                "deny" => "-D",
+                _ => unreachable!("level already validated by BudgetConfig::from_file_validated"),
             };
-
-            if let Some(flag) = level_flag {
-                lint_flags.push(format!("{} {}", flag, lint));
-            } else {
-                return Err(format!(
-                    "Error: Unknown lint level '{}' for '{}' in {}. Valid levels are allow, warn, and deny.",
-                    level, lint, path
-                ));
-            }
+            lint_flags.push(format!("{} {}", flag, lint));
         }
     }
 
