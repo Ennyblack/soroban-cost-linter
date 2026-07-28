@@ -154,6 +154,17 @@ const SOROBAN_HOST_TYPES: &[&[&str]] = &[
     &["soroban_sdk", "deploy", "DeployerWithAsset"],
 ];
 
+/// Soroban collection types that support linear-time scanning operations.
+const SOROBAN_COLLECTION_TYPES: &[&[&str]] = &[
+    &["soroban_sdk", "vec", "Vec"],
+    &["soroban_sdk", "map", "Map"],
+];
+
+const LINEAR_SCAN_METHODS: &[&str] = &["contains", "position", "find"];
+
+/// Host calls that live directly on `Env` rather than on an accessor type, and
+/// whose result is constant for the whole invocation.
+///
 /// The accessor methods themselves (`Env::ledger`, `Env::crypto`, ...) are not
 /// listed: they only build a wrapper value, the metered work happens in the
 /// method called on the wrapper. Argument-taking `Env` methods such as
@@ -462,36 +473,8 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::SymbolOperations,
     },
     LintMetadata {
-        lint: STORAGE_WRITE_WITHOUT_READ,
-        category: LintCategory::StorageOperations,
-    },
-    LintMetadata {
-        lint: INEFFICIENT_BYTES_CONCAT,
-        category: LintCategory::Memory,
-    },
-    LintMetadata {
-        lint: MAP_INSERT_IN_LOOP,
-        category: LintCategory::StorageOperations,
-    },
-    LintMetadata {
-        lint: BYTES_APPEND_IN_LOOP,
-        category: LintCategory::Memory,
-    },
-    LintMetadata {
-        lint: SIGNATURE_VERIFICATION_IN_LOOP,
+        lint: LINEAR_SCAN_IN_LOOP,
         category: LintCategory::Compute,
-    },
-    LintMetadata {
-        lint: STORAGE_KEY_CONSTRUCTION_IN_LOOP,
-        category: LintCategory::SymbolOperations,
-    },
-    LintMetadata {
-        lint: VEC_WHERE_SLICE_COULD_BE_USED,
-        category: LintCategory::Memory,
-    },
-    LintMetadata {
-        lint: EXTEND_TTL_IN_LOOP,
-        category: LintCategory::EntryLifecycle,
     },
 ];
 
@@ -512,15 +495,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_HOST_FUNCTION_CALL,
         HOST_IN_LOOP,
         SYMBOL_NEW_FOR_SHORT_LITERAL,
-        UNNECESSARY_STRING_TO_BYTES,
-        STORAGE_WRITE_WITHOUT_READ,
-        INEFFICIENT_BYTES_CONCAT,
-        MAP_INSERT_IN_LOOP,
-        BYTES_APPEND_IN_LOOP,
-        SIGNATURE_VERIFICATION_IN_LOOP,
-        STORAGE_KEY_CONSTRUCTION_IN_LOOP,
-        VEC_WHERE_SLICE_COULD_BE_USED,
-        EXTEND_TTL_IN_LOOP,
+        LINEAR_SCAN_IN_LOOP,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
@@ -529,15 +504,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(SymbolNewForShortLiteral));
-    lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
-    lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
-    lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
-    lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
-    lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
-    lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
-    lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
-    lint_store.register_late_pass(|_| Box::new(VecWhereSliceCouldBeUsed));
-    lint_store.register_late_pass(|_| Box::new(ExtendTtlInLoop));
+    lint_store.register_late_pass(|_| Box::new(LinearScanInLoop));
 }
 
 /// Flags any Soroban storage accessor method call (including

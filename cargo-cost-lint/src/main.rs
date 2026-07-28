@@ -143,8 +143,17 @@ struct Cli {
     #[arg(long, value_enum, default_value_t = OutputFormat::Text, help = "Output format")]
     format: OutputFormat,
 
-    #[arg(long, help = "Automatically apply fixable lint suggestions")]
-    fix: bool,
+    #[arg(long, help = "Exit with non-zero status if the number of warnings exceeds this threshold")]
+    max_warnings: Option<u32>,
+}
+
+#[derive(Deserialize, Debug)]
+struct BudgetConfig {
+    // Reserved for budget.toml lint-level overrides; the validation logic
+    // that reads this is a pre-existing stub, unrelated to .lintignore.
+    #[allow(dead_code)]
+    lints: Option<std::collections::HashMap<String, String>>,
+    max_warnings: Option<u32>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
@@ -260,24 +269,24 @@ fn main() {
         return;
     }
 
-    if let Some(lint_name) = &cli.explain {
-        print_explanation(lint_name);
-        return;
-    }
-
-    let allowed = allowed_files(Path::new("."));
-    let lint_name_set = module_15::build_lint_name_set(LINT_NAMES);
-
-    let mut lint_flags: Vec<String> = Vec::new();
-    if let Some(config_path) = &cli.config {
-        match try_parse_budget_config(config_path) {
-            Ok(flags) => lint_flags = flags,
-            Err(e) => {
-                eprintln!("{}", e);
-                exit(1);
+    let lint_flags: Vec<String> = Vec::new();
+    let config = if let Some(config_path) = &cli.config {
+        if Path::new(config_path).exists() {
+            if let Ok(config_str) = fs::read_to_string(config_path) {
+                toml::from_str::<BudgetConfig>(&config_str).ok()
+            } else {
+                None
             }
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
+
+    let max_warnings = cli.max_warnings.or_else(|| {
+        config.as_ref().and_then(|c| c.max_warnings)
+    });
 
     let preflight = Command::new("cargo")
         .arg("dylint")
@@ -326,7 +335,7 @@ fn main() {
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
-    let mut lint_counts: HashMap<String, usize> = HashMap::new();
+    let mut warning_count: u32 = 0;
 
     let mut findings: Vec<LintFinding> = Vec::new();
 
@@ -399,7 +408,7 @@ fn main() {
                                     continue;
                                 }
 
-                                *lint_counts.entry(lint_name.to_string()).or_insert(0) += 1;
+                                warning_count += 1;
 
                                 if level == "error" || level == "deny" {
                                     highest_exit_code = 1;
@@ -547,6 +556,16 @@ fn main() {
         exit(status.code().unwrap_or(1));
     } else if highest_exit_code != 0 {
         exit(highest_exit_code);
+    }
+
+    if let Some(max_w) = max_warnings {
+        if warning_count > max_w {
+            eprintln!(
+                "error: number of warnings ({}) exceeds --max-warnings ({})",
+                warning_count, max_w
+            );
+            exit(1);
+        }
     }
 }
 

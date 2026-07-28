@@ -312,16 +312,31 @@ fn deliberate_storage_loop(env: Env) {
 }
 ```
 
-### Automatically fixing lints
+### Ratchet workflow with `--max-warnings`
 
-`cargo-cost-lint` includes a `--fix` flag that automatically applies safe, machine-applicable suggestions for simple lints. For example, it can replace `Symbol::new(&env, "short")` with `symbol_short!("short")`:
+You can enforce a quality gate by setting a maximum number of warnings:
 
 ```bash
-# Check and auto-fix fixable lints
-cargo cost-lint --fix
+# Fail CI if more than 5 lint findings are emitted
+cargo cost-lint --max-warnings 5
+
+# Strict mode: zero warnings allowed
+cargo cost-lint --max-warnings 0
 ```
 
-When `--fix` is passed, the tool applies all `MachineApplicable` suggestions in-place and writes the updated source files.
+The threshold can also be set in `budget.toml` so both CI and local runs agree:
+
+```toml
+max_warnings = 5
+```
+
+The CLI flag takes precedence over `budget.toml`. When the threshold is exceeded, the tool prints:
+
+```
+error: number of warnings (N) exceeds --max-warnings (M)
+```
+
+and exits with code 1.
 
 ### Configuration (`budget.toml`)
 
