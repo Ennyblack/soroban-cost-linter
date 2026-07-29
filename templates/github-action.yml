@@ -1,3 +1,9 @@
+# This is the easiest way to add Soroban cost linting to your CI.
+# Add this file to .github/workflows/cost-lint.yml in your Soroban workspace.
+#
+# For advanced usage (custom config, extra args, monorepo subdirectory), see:
+# https://tollcraft.gitbook.io/docs
+
 name: Soroban Cost Lint
 
 on: [push, pull_request]
