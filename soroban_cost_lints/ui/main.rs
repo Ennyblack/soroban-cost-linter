@@ -296,6 +296,14 @@ fn good_no_clone_needed(env: Env) {
     let _ref = &env; // Good — no clone, just a reference
 }
 
+fn bad_clone_env_ufcs_env(env: Env) {
+    let _cloned = Env::clone(&env); // Should Warn
+}
+
+fn bad_clone_env_ufcs_clone(env: Env) {
+    let _cloned = Clone::clone(&env); // Should Warn
+}
+
 fn good_env_ref_clone(env: &Env) {
     let _cloned = env.clone(); // Good — &Env, clone produces owned Env
 }

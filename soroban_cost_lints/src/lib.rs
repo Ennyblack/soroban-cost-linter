@@ -856,7 +856,8 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
     /// the `clone` method name and confirms the receiver type resolves to
     /// `soroban_sdk::Env` before emitting a help note.
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+        let receiver = if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) =
+            expr.kind
             && path_segment.ident.name.as_str() == "clone"
         {
             let is_env = if let Some(adt_def) = try_get_adt_def(cx, receiver) {
@@ -873,27 +874,26 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                     return;
                 }
 
-                // If the receiver is a local binding that is still used after
-                // the clone, the original and the clone are both live — skip.
-                if let Some(local_id) = receiver.res_local_id() {
-                    if local_used_after_expr(cx, local_id, expr) {
-                        return;
-                    }
-                } else {
-                    // Cannot statically determine whether the receiver is used
-                    // after the clone — be conservative and skip.
+            // If the receiver is a local binding that is still used after
+            // the clone, the original and the clone are both live — skip.
+            if let Some(local_id) = receiver.res_local_id() {
+                if local_used_after_expr(cx, local_id, expr) {
                     return;
                 }
-
-                span_lint_and_help(
-                    cx,
-                    REDUNDANT_ENV_CLONE,
-                    expr.span,
-                    "redundant clone on Env object",
-                    None,
-                    "pass Env by reference or value instead of cloning",
-                );
+            } else {
+                // Cannot statically determine whether the receiver is used
+                // after the clone — be conservative and skip.
+                return;
             }
+
+            span_lint_and_help(
+                cx,
+                REDUNDANT_ENV_CLONE,
+                expr.span,
+                "redundant clone on Env object",
+                None,
+                "pass Env by reference or value instead of cloning",
+            );
         }
     }
 }
