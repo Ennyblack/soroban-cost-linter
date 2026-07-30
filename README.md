@@ -358,6 +358,7 @@ unnecessary_host_function_call = "warn"
 storage_write_without_read = "warn"
 inefficient_bytes_concat = "warn"
 map_insert_in_loop = "warn"
+```
 contract_call_in_loop = "warn"
 instance_storage_for_unbounded_data = "warn"
 
