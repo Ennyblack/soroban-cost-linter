@@ -1,3 +1,4 @@
+mod config;
 mod module_13;
 mod module_15;
 
@@ -9,7 +10,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio, exit};
 
 mod config;
@@ -147,13 +148,9 @@ struct Cli {
     format: OutputFormat,
 }
 
-#[derive(Deserialize, Debug)]
-struct BudgetConfig {
-    lints: Option<std::collections::HashMap<String, String>>,
-}
-
 include!(concat!(env!("OUT_DIR"), "/lint_names.rs"));
 include!(concat!(env!("OUT_DIR"), "/lint_metadata.rs"));
+include!(concat!(env!("OUT_DIR"), "/lint_info.rs"));
 
 fn validate_and_build_flags(config: &BudgetConfig) -> Result<Vec<String>, String> {
     let mut lint_flags = Vec::new();
@@ -738,6 +735,7 @@ mod tests {
         let mut f = File::create(path).unwrap();
         f.write_all(contents.as_bytes()).unwrap();
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn lint_metadata_matches_registered_lints() {
