@@ -7,6 +7,7 @@ use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -214,6 +215,18 @@ fn resolve_config(config: Option<&str>) -> Option<PathBuf> {
 fn parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     let config = BudgetConfig::from_file_validated(Path::new(path), LINT_NAMES)?;
 
+/// Walks `root`, respecting `.gitignore` and `.lintignore`, and returns the
+/// canonicalized set of files that are allowed to be linted (i.e. not
+/// excluded by either ignore file).
+fn allowed_files(root: &Path) -> HashSet<PathBuf> {
+    WalkBuilder::new(root)
+        .git_ignore(true)
+        .add_custom_ignore_filename(".lintignore")
+        .build()
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| entry.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|entry| entry.path().canonicalize().ok())
+        .collect()
     let mut lint_flags = Vec::new();
     if let Some(lints) = config.lints {
         for (lint, level) in lints {
@@ -256,6 +269,42 @@ fn try_parse_budget_config(path: &str) -> Result<Vec<String>, String> {
     }
 }
 
+// ── Error type ──────────────────────────────────────────────────────────
+
+#[derive(Debug)]
+enum Error {
+    Io(std::io::Error),
+    Dylint(String),
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Io(e) => write!(f, "I/O error: {}", e),
+            Error::Dylint(msg) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Io(e) => Some(e),
+            Error::Dylint(_) => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Self {
+        Error::Io(e)
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;
+
+// ── Main ────────────────────────────────────────────────────────────────
+
 #[allow(clippy::collapsible_if)]
 fn main() {
     if let Err(e) = run() {
@@ -272,6 +321,30 @@ fn run() -> LinterResult<()> {
     if args.len() > 1 && args[1] == "cost-lint" {
         args.remove(1);
     }
+    let cli = Cli::try_parse_from(args).unwrap_or_else(|e| {
+        let _ = e.print();
+        exit(1);
+    });
+
+    let allowed = allowed_files(Path::new("."));
+
+    match run(cli, allowed) {
+        Ok(code) => exit(code),
+        Err(e) => {
+            eprintln!("error: {}", e);
+            exit(1);
+        }
+    }
+}
+
+fn run(cli: Cli, allowed: HashSet<PathBuf>) -> Result<i32> {
+    let lint_flags: Vec<String> = Vec::new();
+    if let Some(config_path) = &cli.config {
+        if Path::new(config_path).exists() {
+            let config_str = fs::read_to_string(config_path)?;
+            if let Ok(config) = toml::from_str::<BudgetConfig>(&config_str) {
+                // ... validate (existing code)
+                let _ = config;
 
     // Handle --version / -V explicitly: clap 4.0's #[command(version)]
     // displays the version but does not auto-exit, so we must check early
@@ -370,6 +443,7 @@ fn run() -> LinterResult<()> {
     }
 
     let mut child = cmd.spawn().map_err(|e| {
+        Error::Dylint(format!(
         LinterError::MissingPrerequisite(format!(
             "Failed to execute cargo dylint: {}. Is cargo-dylint installed?",
             e
@@ -379,6 +453,7 @@ fn run() -> LinterResult<()> {
     let stdout = child
         .stdout
         .take()
+        .ok_or_else(|| Error::Dylint("Failed to capture stdout from cargo dylint".into()))?;
         .ok_or_else(|| LinterError::Other("Failed to capture stdout".into()))?;
     let reader = BufReader::new(stdout);
     let mut highest_exit_code = 0;
@@ -386,6 +461,64 @@ fn run() -> LinterResult<()> {
 
     let mut findings: Vec<LintFinding> = Vec::new();
 
+    for line_str in reader.lines().map_while(std::result::Result::ok) {
+        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str) {
+            if msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message") {
+                if let Some(message) = msg.get("message") {
+                    if let Some(code) = message.get("code") {
+                        if let Some(lint_name) = code.get("code").and_then(|c| c.as_str()) {
+                            if LINT_NAMES.contains(&lint_name) {
+                                let level = message
+                                    .get("level")
+                                    .and_then(|l| l.as_str())
+                                    .unwrap_or("unknown");
+
+                                let msg_text = message
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("");
+                                let mut file = String::new();
+                                let mut span_obj = Span {
+                                    line_start: 0,
+                                    line_end: 0,
+                                    column_start: 0,
+                                    column_end: 0,
+                                };
+
+                                if let Some(spans) = message.get("spans").and_then(|s| s.as_array())
+                                {
+                                    for s in spans {
+                                        if s.get("is_primary")
+                                            .and_then(|p| p.as_bool())
+                                            .unwrap_or(false)
+                                        {
+                                            file = s
+                                                .get("file_name")
+                                                .and_then(|f| f.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
+                                            span_obj.line_start = s
+                                                .get("line_start")
+                                                .and_then(|l| l.as_u64())
+                                                .unwrap_or(0)
+                                                as usize;
+                                            span_obj.line_end = s
+                                                .get("line_end")
+                                                .and_then(|l| l.as_u64())
+                                                .unwrap_or(0)
+                                                as usize;
+                                            span_obj.column_start = s
+                                                .get("column_start")
+                                                .and_then(|c| c.as_u64())
+                                                .unwrap_or(0)
+                                                as usize;
+                                            span_obj.column_end = s
+                                                .get("column_end")
+                                                .and_then(|c| c.as_u64())
+                                                .unwrap_or(0)
+                                                as usize;
+                                            break;
+                                        }
     for line_str in reader.lines().map_while(Result::ok) {
         if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line_str)
             && msg.get("reason").and_then(|r| r.as_str()) == Some("compiler-message")
@@ -626,6 +759,13 @@ fn run() -> LinterResult<()> {
         eprintln!("total: {}", total);
     }
 
+    let status = child
+        .wait()
+        .map_err(|e| Error::Dylint(format!("Failed to wait on cargo dylint: {}", e)))?;
+    if !status.success() {
+        Ok(status.code().unwrap_or(1))
+    } else {
+        Ok(highest_exit_code)
     if !status.success() {
         return Err(LinterError::Subprocess {
             code: status.code(),
