@@ -475,6 +475,11 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: LOOP_INVARIANT_STORAGE_ACCESS,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: UNBOUNDED_INPUT_LOOP,
         lint: SOROBAN_REDUNDANT_STORAGE_READ,
         category: LintCategory::StorageOperations,
     },
