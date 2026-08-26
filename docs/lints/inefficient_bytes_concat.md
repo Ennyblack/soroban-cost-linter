@@ -1,49 +1,49 @@
 ---
-description: Inefficient bytes concatenation — flag repeated Bytes concatenation in loops that creates unnecessary allocations
-sidebar_position: 5
+description: Inefficient bytes concatenation — avoid repeated per-iteration concatenations that waste CPU and memory
+sidebar_position: 6
 ---
 
 # `inefficient_bytes_concat`
 
-| Default Severity | Category   |
-| ---------------- | ---------- |
-| `warn`           | Memory     |
+| Default Severity | Category     |
+| ---------------- | ------------ |
+| `warn`           | Compute      |
 
 ## What it does
 
-Flags inefficient Bytes concatenation inside a loop using the `+` operator, which creates a new allocation on every iteration.
+Flags repeated concatenation of `Bytes` or `BytesN` objects inside loop bodies using operator-based concatenation.
 
 ## Why is this bad
 
-Using the `+` operator to concatenate `Bytes` values inside a loop creates a new allocation on every iteration, which is both CPU-expensive and wasteful of Soroban memory charges.
+Concatenating bytes repeatedly inside a loop allocates new host objects and copies backing buffers on every iteration, causing quadratic performance degradation and excessive CPU consumption.
 
 ## Example
 
-**Bad** — re-allocating a new `Bytes` value on every loop iteration:
+**Bad** — concatenating bytes inside a loop:
 
 ```rust
 // ❌ Triggers: inefficient_bytes_concat
-fn build_message(env: Env) {
-    let mut result = Bytes::from("");
-    for _ in 0..10 {
-        result = result + Bytes::from("x");
-    }
+let mut result = Bytes::new(&env);
+for item in &items {
+    result = result + item;
 }
 ```
 
-**Good** — accumulate in a `Vec<u8>` buffer and convert once:
+**Good** — preallocate or accumulate using a vector or buffer before converting to host bytes:
 
 ```rust
-// ✅ Fixed: use Vec<u8> buffer, then convert
-fn build_message(env: Env) {
-    let mut buf = Vec::new();
-    for _ in 0..10 {
-        buf.extend_from_slice(b"x");
-    }
-    let _result = Bytes::from(&buf[..]);
+// ✅ Fixed: collect/accumulate outside the loop
+let mut buffer = Vec::new();
+for item in &items {
+    buffer.extend_from_slice(item.to_alloc_vec());
 }
+let result = Bytes::from_slice(&env, &buffer);
 ```
 
-## Fix
+## Suggested Fix
 
-Replace `+` concatenation of `Bytes` values with a `Vec<u8>` buffer that accumulates bytes, then convert to `Bytes` once after the loop using `Bytes::from`.
+Avoid performing operator-based `Bytes` concatenation inside loops. Instead, accumulate data in a native vector or buffer and create the host `Bytes` object once after the loop.
+
+## Cost Impact
+
+- **CPU instructions & Memory allocations:** Each per-iteration concatenation allocates a new host object and copies bytes, scaling quadratically with loop iterations and draining the transaction CPU/memory budget.
