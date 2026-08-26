@@ -18,21 +18,17 @@ The project runs continuous regression and triage checks against real-world Soro
 
 | Metric | Count | Percentage |
 |---|---:|---:|
-| **Total Findings** | 93 | 100.0% |
-| **True Positives (TP)** | 17 | 18.3% |
-| **False Positives (FP)** | 76 | 81.7% |
+| **Total Findings** | 96 | 100.0% |
+| **True Positives (TP)** | 17 | 17.7% |
+| **False Positives (FP)** | 79 | 82.3% |
 
-### New Cross-Contract Call Corpus Contracts Analysis
+### New Cross-Contract Corpus Contracts Triage
 
-- **`cross_contract_call_simple`**: Makes a single external cross-contract call (`env.invoke_contract`) outside of a loop to settle a transfer. Emits **0 findings**. This is **correct** (no loop-based contract calls or other anti-patterns). 
-- **`cross_contract_call_loop`**: Batches multiple cross-contract calls inside a `while` loop iterating over recipients. Emits **1 finding** (`contract_call_in_loop`). This is a **false positive / intentional batch dispatch pattern**; the contract is designed to batch-settle transfers across multiple accounts in a single transaction, where cross-contract invocation per item is required by the business logic.
+1. **`cross_contract_call_outside_loop`**: Makes a single cross-contract transfer via `env.invoke_contract` outside of any loop. Result: **0 findings**. Correctly avoids flagging non-loop contract calls.
+2. **`cross_contract_batch_settlement`**: Performs a batch token transfer dispatch inside a `while` loop over recipient and amount collections. Result: `contract_call_in_loop` (1 finding, correct true/intentional positive for batch settlement), `soroban_storage_in_loop` (1 finding, false positive for collection index reads), and `loop_invariant_storage_access` (2 findings, false positives for vector handle access).
 
 ---
 
 ## Known False Positive Patterns by Lint
 
-### `contract_call_in_loop`
-
-Flags cross-contract calls (`env.invoke_contract`) inside loop bodies.
-
-- **Batch Dispatches:** When performing batch distributions or multi-recipient settlements through token or external contracts, looping over items and invoking the contract per item is correct and intentional. Suppress with `#[allow(contract_call_in_loop)]` if needed.
+Refer to codebase history and documentation for specific lint suppression guidelines.
