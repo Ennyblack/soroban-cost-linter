@@ -26,6 +26,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`unnecessary_host_function_call`](unnecessary_host_function_call.md) | `warn` | unnecessary host function call inside loop |
 | [`host_in_loop`](host_in_loop.md) | `warn` | use of Host object inside a loop |
 | [`contract_call_in_loop`](contract_call_in_loop.md) | `warn` | cross-contract invocation inside a loop |
+| [`token_transfer_in_loop`](token_transfer_in_loop.md) | `warn` | token transfer (transfer / transfer_from) on a contract client inside a loop |
 | [`unbounded_input_loop`](unbounded_input_loop.md) | `warn` | loop bound derived from untrusted input with storage write in body |
 | [`signature_verification_in_loop`](signature_verification_in_loop.md) | `warn` | signature verification performed inside a loop |
 | [`linear_scan_in_loop`](linear_scan_in_loop.md) | `warn` | linear scan on collection inside a loop — O(n²) cost |

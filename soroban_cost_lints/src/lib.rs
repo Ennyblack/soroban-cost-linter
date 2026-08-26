@@ -541,6 +541,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: TOKEN_TRANSFER_IN_LOOP,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: LOOP_INVARIANT_STORAGE_ACCESS,
         category: LintCategory::StorageOperations,
     },
@@ -635,6 +639,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNBOUNDED_RECURSION,
         HOST_IN_LOOP,
         CONTRACT_CALL_IN_LOOP,
+        TOKEN_TRANSFER_IN_LOOP,
         LOOP_INVARIANT_STORAGE_ACCESS,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         INEFFICIENT_BYTES_CONCAT,
@@ -662,6 +667,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnboundedRecursion::default()));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(ContractCallInLoop));
+    lint_store.register_late_pass(|_| Box::new(TokenTransferInLoop));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
     lint_store.register_late_pass(|_| Box::new(SorobanInefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
@@ -1267,6 +1273,83 @@ impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
                     "cross-contract call inside a loop",
                     None,
                     "add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// token_transfer_in_loop — Lint
+// =======================================================================
+
+// Flags `transfer` / `transfer_from` calls on a generated Soroban contract
+// client (conventionally a `*Client` struct) that sit inside a loop body.
+//
+// Token transfers are cross-contract invocations plus at least two storage
+// writes each — one of the most expensive single operations a Soroban
+// contract can perform. Repeating one per iteration (an airdrop loop, a
+// batch payout, a fee distribution) multiplies that cost by a
+// caller-influenced factor and is a common way for a contract to become
+// unusable at scale after testing fine with three recipients.
+//
+// This lint is a specialised companion to [`CONTRACT_CALL_IN_LOOP`]:
+// the generic lint catches every `env.invoke_contract`, but a token
+// transfer has a specific fix (batch the transfer, or restructure to a
+// claim pattern where recipients pull), so this diagnostic names that
+// alternative rather than only stating the problem.
+//
+// Detection matches on the method name (`transfer`, `transfer_from`)
+// when the receiver is an ADT whose definition path does *not* match
+// any known `soroban_sdk` type. This identifies generated contract
+// clients without requiring the real SDK types to be present, and the
+// two method names cover the standard Soroban token interface.
+rustc_session::declare_lint! {
+    pub TOKEN_TRANSFER_IN_LOOP,
+    Warn,
+    "token transfer (transfer / transfer_from) on a contract client inside a loop"
+}
+/// Concrete pass that fires [`TOKEN_TRANSFER_IN_LOOP`].
+pub struct TokenTransferInLoop;
+rustc_session::impl_lint_pass!(TokenTransferInLoop => [TOKEN_TRANSFER_IN_LOOP]);
+
+impl<'tcx> LateLintPass<'tcx> for TokenTransferInLoop {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && matches!(
+                path_segment.ident.name.as_str(),
+                "transfer" | "transfer_from"
+            )
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_known_sdk_type = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                let did = adt_def.did();
+                matches_any_path(
+                    cx,
+                    did,
+                    &[
+                        &["soroban_sdk", "Env"],
+                        &["soroban_sdk", "Address"],
+                        &["soroban_sdk", "storage", "Storage"],
+                        &["soroban_sdk", "storage", "Instance"],
+                        &["soroban_sdk", "storage", "Persistent"],
+                        &["soroban_sdk", "storage", "Temporary"],
+                    ],
+                )
+            } else {
+                false
+            };
+
+            if !is_known_sdk_type && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    TOKEN_TRANSFER_IN_LOOP,
+                    expr.span,
+                    "token transfer inside a loop",
+                    None,
+                    "batch the transfer, or switch to a claim pattern where recipients pull instead of the contract pushing",
                 );
             }
         }

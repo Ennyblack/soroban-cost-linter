@@ -17,6 +17,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `host_in_loop` | warn | use of Host object inside a loop | [Link](lints/host_in_loop.md) |
 | `unnecessary_string_to_bytes` | warn | unnecessary String to Bytes conversion | [Link](lints/unnecessary_string_to_bytes.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
+| `token_transfer_in_loop` | warn | token transfer (transfer / transfer_from) on a contract client inside a loop | [Link](lints/token_transfer_in_loop.md) |
 | `symbol_new_for_short_literal` | warn | Symbol::new used with a short literal that could use symbol_short! macro | [Link](lints/symbol_new_for_short_literal.md) |
 | `unbounded_input_loop` | warn | loop bound derived from untrusted input with storage write in body | [Link](lints/unbounded_input_loop.md) |
 | `bytes_append_in_loop` | warn | repeatedly growing SDK containers inside loops | [Link](lints/bytes_append_in_loop.md) |
