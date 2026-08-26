@@ -182,3 +182,23 @@ Fires on every `get`/`has` on `persistent` storage when the function contains no
 - **Near-miss 2 — non-persistent storage:** `instance.get(...)` / `temporary.get(...)` are out of scope and never flagged.
 - The lint collects reads via a visitor over the whole function body, so a read in a nested block still counts.
 - **No known false positives:** a persistent read with no `extend_ttl` in the function is always reported.
+
+### `crypto_hash_of_constant`
+
+Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called with a literal or `const` item as its argument.
+
+- **Genuine findings:** any `sha256(b"domain tag")` / `keccak256(&PREFIX_CONST)` call re-runs an expensive metered host hash to recompute a digest that is fixed at compile time. These are real wins — precompute the digest offline and embed it as a `const`.
+- **Out of scope (deliberately silent):** a constant that is first wrapped in a constructor, e.g. `env.crypto().sha256(&Bytes::from_slice(&env, b"prefix"))`, is *not* flagged. The argument is a method call, not a literal/`const` item, so the lint conservatively stays quiet rather than risk a false positive. If your contract does this with a truly fixed prefix, precomputing the digest is still the right fix.
+- **Known false positive — uniform code path:** some contracts intentionally hash a constant inside a helper that also hashes runtime data, so that *every* caller (constant and runtime alike) goes through one code path. For example:
+
+  ```rust
+  fn tagged_hash(env: &Env, prefix: &[u8], data: &[u8]) -> BytesN<32> {
+      let combined = /* prefix || data */;
+      env.crypto().sha256(&combined) // flagged only when `prefix` is the constant call-site's arg
+  }
+  // Caller that passes a compile-time constant prefix still pays for a runtime hash here.
+  ```
+
+  When the constant branch is deliberate — keeping a single, uniform hashing path for clarity or to share post-hash logic — suppress with `#[allow(crypto_hash_of_constant)]` at the call site, or split the constant case into its own precomputed `const` digest. This is the one pattern where the warning is correct in isolation but unwanted in context.
+
+
