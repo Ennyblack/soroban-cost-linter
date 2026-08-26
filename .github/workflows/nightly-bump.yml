@@ -54,7 +54,19 @@ jobs:
             TARGET="nightly-$(date -u -d '-7 days' +%Y-%m-%d)"
           fi
           echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          set +e
           bash .github/scripts/bump-nightly.sh "$TARGET"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 2 ]; then
+            # Target already equals the pinned nightly; nothing to do.
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::bump-nightly.sh failed (rc=$RC)"
+            exit 1
+          fi
           if [ -z "$(git status --porcelain)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
