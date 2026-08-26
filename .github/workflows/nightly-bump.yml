@@ -92,11 +92,11 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          cargo test --workspace > nightly-bump-test.log 2>&1
+          cargo test --workspace > "$RUNNER_TEMP/nightly-bump-test.log" 2>&1
           CODE=$?
           echo "exit=$CODE" >> "$GITHUB_OUTPUT"
-          node .github/scripts/summarize-test-failures.js nightly-bump-test.log "${{ steps.bump.outputs.target }}" > NIGHTLY_BUMP_REPORT.md
-          cat NIGHTLY_BUMP_REPORT.md
+          node .github/scripts/summarize-test-failures.js "$RUNNER_TEMP/nightly-bump-test.log" "${{ steps.bump.outputs.target }}" > "$RUNNER_TEMP/NIGHTLY_BUMP_REPORT.md"
+          cat "$RUNNER_TEMP/NIGHTLY_BUMP_REPORT.md"
 
       - name: Open or update the bump PR
         if: steps.bump.outputs.changed == 'true'
@@ -106,7 +106,7 @@ jobs:
           branch: ci/nightly-bump
           base: main
           title: "chore(ci): attempt nightly bump to ${{ steps.bump.outputs.target }}"
-          body-path: NIGHTLY_BUMP_REPORT.md
+          body-path: ${{ runner.temp }}/NIGHTLY_BUMP_REPORT.md
           commit-message: "chore(ci): attempt nightly bump to ${{ steps.bump.outputs.target }}"
           labels: dependencies,automated
           delete-branch: false
