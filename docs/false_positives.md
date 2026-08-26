@@ -18,9 +18,9 @@ The project runs continuous regression and triage checks against real-world Soro
 
 | Metric | Count | Percentage |
 |---|---:|---:|
-| **Total Findings** | 90 | 100.0% |
-| **True Positives (TP)** | 17 | 18.9% |
-| **False Positives (FP)** | 73 | 81.1% |
+| **Total Findings** | 91 | 100.0% |
+| **True Positives (TP)** | 18 | 19.8% |
+| **False Positives (FP)** | 73 | 80.2% |
 
 ### Breakdown by Lint
 
@@ -36,6 +36,7 @@ The project runs continuous regression and triage checks against real-world Soro
 | `soroban_inefficient_bytes_concat` | 1 | 0 | warn | String/bytes formatting in loop iterations |
 | `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
 | `symbol_new_for_short_literal` | 0 | 8 | warn | True positive: short literals should use `symbol_short!` |
+| `map_insert_in_loop` | 0 | 1 | warn | True positive: mutating Map inside loop body unnecessarily multiplies host costs |
 | `unwrap_on_storage_get` | 0 | 4 | warn | True positive: direct unwrap on storage read |
 | `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
 | `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
@@ -104,137 +105,3 @@ Flags calling `.append()` or `.push_back()` on `Bytes` or `Vec` inside loops.
 Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an evident size bound.
 
 - **Footprint Risk:** Instance storage is limited to 64KB per contract and shares a single TTL with the contract executable.
-- **Handling:** Prefer `persistent` or `temporary` storage for dynamically growing user data. If the collection has an enforced invariant bound (e.g., maximum 10 elements), suppress with `#[allow(instance_storage_for_unbounded_data)]`.
-
-### `soroban_inefficient_bytes_concat` / `inefficient_bytes_concat`
-
-Flags incremental concatenation of byte sequences inside loops.
-
-- **Remedy:** Pre-calculate required buffer size and construct host `Bytes` once.
-
-### `contract_call_in_loop`
-
-Flags cross-contract invocations (`Client::new(&env, &addr).method(...)`) inside loops.
-
-- **Overhead:** Each cross-contract call invokes host context switching and separate auth/cost accounting.
-- **Handling:** Batch cross-contract calls where possible; suppress with `#[allow(contract_call_in_loop)]` when per-item cross-contract dispatch is required.
-
-### `unnecessary_host_function_call`
-
-Flags host function calls inside loops whose arguments do not depend on loop state.
-
-- **Bindings in Closures:** Mutations inside a closure nested within the loop are not tracked.
-- **Interior Mutability:** Mutability through `RefCell` or raw pointers is not tracked.
-- **Intentional Calls:** Calls like `env.prng().u64_in_range()` with constant bounds are flagged; suppress with `#[allow(unnecessary_host_function_call)]`.
-
-### `redundant_env_clone`
-
-Fires on `.clone()` calls on `Env`. `Env` is a lightweight copyable handle.
-
-- **Consumed Env:** Where `Env` is consumed by value before a clone site, or in generic contexts that do not guarantee copy semantics.
-
-### `symbol_new_for_short_literal`
-
-Fires when `Symbol::new(&env, "short")` is used with a literal string <= 9 characters.
-
-- **Remedy:** Replace with `symbol_short!("short")` for zero host overhead at runtime.
-
-### `unbounded_recursion`
-
-Flags recursive function cycles whose depth is caller-supplied.
-
-- **Structurally Bounded Helpers:** When custom collection methods advance through a sub-slice not recognized by the built-in tail set, suppress with `#[allow(unbounded_recursion)]`.
-
-### `soroban_redundant_storage_read`
-
-Fires when two reads of the same key appear with no intervening write in the same block.
-
-- **Block Scoping:** Reads across distinct conditional branches or nested closures are not treated as duplicate reads.
-
-### `persistent_read_without_ttl_extension`
-
-Fires on persistent storage reads when the containing function does not invoke `extend_ttl`.
-
-- **Function-Wide Check:** A single `extend_ttl` call on persistent storage in the function satisfies the lint.
-
-### `unwrap_on_storage_get`
-
-Fires on `.unwrap()` / `.expect()` called directly on a storage read.
-
-- **Immediate Overwrite:** If a key was just set in the same transaction, suppress with `#[allow(unwrap_on_storage_get)]` or use pattern matching `if let Some(...)`.
-
----
-
-## Suppression Methods
-
-You have three layers of suppression, each suited to a different scope.
-
-### 1. Per-site: `#[allow(...)]` Attribute
-
-Suppress the lint for a single function, expression, or block:
-
-```rust
-#[allow(soroban_storage_in_loop)]
-fn batch_write(env: Env, items: Vec<u32>) {
-    for item in items {
-        env.storage().instance().set(&item, &1);
-    }
-}
-```
-
-This is the most targeted suppression. Use it when the flagged code is intentional and the lint gives no other way to express that intent.
-
-You can also use `#[expect(...)]` (nightly Rust) to verify that the lint fires — the compiler will warn if the lint *stops* firing when a newer linter release resolves the pattern:
-
-```rust
-#[expect(soroban_storage_in_loop)]
-fn batch_write(env: Env, items: Vec<u32>) {
-    for item in items {
-        env.storage().instance().set(&item, &1);
-    }
-}
-```
-
-### 2. Per-file: `.lintignore`
-
-Create a `.lintignore` file in your workspace root (next to `Cargo.toml`). The linter respects standard glob patterns:
-
-```gitignore
-# Ignore all lint warnings in generated files
-src/generated/*.rs
-
-# Ignore deliberately expensive legacy modules
-src/legacy_batch.rs
-```
-
-### 3. Per-workspace: `budget.toml`
-
-Set a lint's severity to `"allow"` in `budget.toml` to disable it project-wide:
-
-```toml
-[lints]
-soroban_storage_in_loop = "allow"
-```
-
-Use workspace-wide suppression sparingly — prefer targeted `#[allow(...)]` attributes or `.lintignore` rules.
-
----
-
-## How to Evaluate a False Positive
-
-Before suppressing a warning, follow this decision checklist:
-
-1. **Is the cost real and unavoidable?** — Does eliminating the warning require changing the contract algorithm, or is it an inherent property of batch operations? If unavoidable, suppress. If hoistable, refactor.
-2. **Can the code be restructured?** — Hoisting invariant expressions (such as storage handles or key constructions) outside loops eliminates overhead without changing behavior.
-3. **Is the pattern covered by Clippy?** — Check the [Scope Boundary](scope_boundary.md) guide for general Rust vs Soroban-specific patterns.
-
----
-
-## Reporting False Positives Upstream
-
-If a lint produces a false positive that should be handled automatically by static analysis:
-
-1. Search existing issues on GitHub to avoid duplicates.
-2. Provide a minimal reproducible example (a standalone Soroban contract function).
-3. State the lint name, the expected vs actual diagnostic, and why the code is optimal.
-4. Mention the `soroban-cost-linter` version and nightly toolchain pin.
