@@ -569,6 +569,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Memory,
     },
     LintMetadata {
+        lint: BYTES_SLICE_COPY_IN_LOOP,
+        category: LintCategory::Memory,
+    },
+    LintMetadata {
         lint: STORAGE_WRITE_WITHOUT_READ,
         category: LintCategory::StorageOperations,
     },
@@ -649,6 +653,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNNECESSARY_STRING_TO_BYTES,
         UNBOUNDED_INPUT_LOOP,
         BYTES_APPEND_IN_LOOP,
+        BYTES_SLICE_COPY_IN_LOOP,
         STORAGE_WRITE_WITHOUT_READ,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
@@ -677,6 +682,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnnecessaryStringToBytes));
     lint_store.register_late_pass(|_| Box::new(UnboundedInputLoop));
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
+    lint_store.register_late_pass(|_| Box::new(BytesSliceCopyInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
@@ -1641,6 +1647,69 @@ fn is_valid_short_symbol(symbol_str: &str) -> bool {
     symbol_str
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// `soroban_sdk::Bytes` (and only `Bytes`) methods that copy a sub-range of
+/// the buffer. `slice` allocates and copies a sub-slice; `copy_from_slice`
+/// copies a native slice into the buffer; `copy_to_slice` copies the buffer
+/// out into a native slice. Every one is a metered host call that scales with
+/// the copied range, so repeating it per iteration of a loop that walks the
+/// buffer turns a linear traversal into a quadratic one.
+const BYTES_SLICE_METHODS: &[&str] = &["slice", "copy_from_slice", "copy_to_slice"];
+
+rustc_session::declare_lint! {
+    pub BYTES_SLICE_COPY_IN_LOOP,
+    Warn,
+    "repeatedly copying sub-slices of a `Bytes` buffer inside a loop"
+}
+
+/// Concrete pass that fires [`BYTES_SLICE_COPY_IN_LOOP`].
+pub struct BytesSliceCopyInLoop;
+rustc_session::impl_lint_pass!(BytesSliceCopyInLoop => [BYTES_SLICE_COPY_IN_LOOP]);
+
+/// Detection: for every `MethodCall` whose segment is one of
+/// [`BYTES_SLICE_METHODS`], peel references off the receiver and confirm the
+/// ADT is `soroban_sdk::Bytes` (slicing/copying is specific to `Bytes`, not
+/// the other container types). A match is reported only when
+/// [`enclosing_loop`] returns `Some`. This is distinct from
+/// [`BytesAppendInLoop`], which catches quadratic *growth* (reallocating as
+/// the buffer grows); this lint catches quadratic *reading* (re-copying the
+/// remaining buffer on each iteration as a parser walks a payload).
+impl<'tcx> LateLintPass<'tcx> for BytesSliceCopyInLoop {
+    /// Flags a sub-slice/copy-range call on `Bytes` inside a loop.
+    ///
+    /// The receiver type is matched against `soroban_sdk::Bytes` and the
+    /// method name against [`BYTES_SLICE_METHODS`]. Only syntactic loops are
+    /// considered.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if !BYTES_SLICE_METHODS.contains(&method_name) {
+                return;
+            }
+
+            let is_bytes = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
+                matches_any_path(cx, adt_def.did(), &[&["soroban_sdk", "Bytes"]])
+            } else {
+                false
+            };
+
+            if is_bytes && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    BYTES_SLICE_COPY_IN_LOOP,
+                    expr.span,
+                    "repeatedly copying a sub-slice of `Bytes` inside a loop",
+                    None,
+                    "prefer index-based access (e.g. `Bytes::get`) for per-byte reads, \
+                     or take the full slice once and iterate it outside the loop; \
+                     only slice once, not on every iteration",
+                );
+            }
+        }
+    }
 }
 
 // =======================================================================

@@ -99,6 +99,14 @@ Flags calling `.append()` or `.push_back()` on `Bytes` or `Vec` inside loops.
 - **Host Reallocation Cost:** In Soroban, growing SDK containers allocates new host objects per iteration.
 - **Remedy:** Preallocate collections where length is known or accumulate natively before creating host objects. If incremental host appending is required, suppress with `#[allow(bytes_append_in_loop)]`.
 
+### `bytes_slice_copy_in_loop`
+
+Flags `.slice()`, `.copy_from_slice()`, and `.copy_to_slice()` calls on `soroban_sdk::Bytes` inside loops. Each call copies a sub-range of the buffer through a metered host call.
+
+- **Small, Provably-Bounded Loops:** A loop whose bound is small and known at compile time (e.g. walking a fixed 32-byte hash, or a constant `for i in 0..4`) copies only a tiny, constant amount of data. The quadratic shape only emerges when the number of iterations (and therefore the total copied bytes) scales with the payload length. These are the cases to consider allowing.
+- **Distinct from `bytes_append_in_loop`:** That lint catches quadratic *growth* (reallocating as the buffer gets larger). This lint catches quadratic *reading* (re-copying the remaining buffer on each iteration as a parser walks a payload). They target different code shapes and recommend different fixes.
+- **Remedy:** Prefer index-based access (`Bytes::get`) for per-byte reads, or take the full slice once and iterate it outside the loop. If the loop bound is small and bounded by contract invariants, suppress with `#[allow(bytes_slice_copy_in_loop)]`.
+
 ### `instance_storage_for_unbounded_data`
 
 Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an evident size bound.
