@@ -163,6 +163,26 @@ Fires on `.unwrap()` / `.expect()` called directly on a storage read.
 
 - **Immediate Overwrite:** If a key was just set in the same transaction, suppress with `#[allow(unwrap_on_storage_get)]` or use pattern matching `if let Some(...)`.
 
+### `redundant_val_conversion`
+
+Flags conversions across the native-Rust/`Val` boundary that are either
+same-type (`u32.into_val(&env)` returning `u32`) or a round trip (`T -> Val ->
+T` within one expression chain).
+
+- **Generic helpers:** A generic function whose type parameter is constrained so
+  that the source and target types coincide (e.g.
+  `fn f<T: IntoVal<Env, T>>(t: T) -> T { t.into_val(&env) }`) is *not* flagged.
+  The two sides line up only because the parameter happens to be equal — that is
+  not a real round trip, so reporting it would be a false positive. The lint
+  compares concrete types and skips when either side mentions a generic parameter.
+- **Inference-variable pins:** A conversion that merely resolves an unresolved
+  inference variable is likewise skipped rather than guessed at.
+- **Legitimate double conversion:** A genuine `Val -> T -> Val` (or `T -> Val ->
+  T` across two *different* type parameters that happen to share a name) where
+  the intermediate `Val` is observed or stored is out of scope; the lint only
+  fires when the inner and outer types ultimately refer to the same concrete
+  value type.
+
 ---
 
 ## Suppression Methods

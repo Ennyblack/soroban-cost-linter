@@ -184,6 +184,13 @@
   {
     "category": "Compute",
     "default_level": "warn",
+    "description": "redundant conversion across the native-Rust/Val boundary",
+    "docs_path": "docs/lints/redundant_val_conversion.md",
+    "name": "redundant_val_conversion"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
     "description": "unbounded recursion driven by caller-supplied input",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"
