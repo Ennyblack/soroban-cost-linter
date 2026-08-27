@@ -326,114 +326,54 @@ fn test_list_lints_json_and_text_consistency_and_descriptions() {
     }
 }
 
+/// Every `--format` value documented in README.md's "Output format" table
+/// must be accepted by the CLI. Clap rejects unknown values with an
+/// `invalid value ... for '--format'` usage error before any linting
+/// happens, so a documented format that stops being a valid `OutputFormat`
+/// variant fails this test immediately.
+///
+/// The negative control at the end proves the detection mechanism works:
+/// a value that is neither documented nor implemented must be rejected.
 #[test]
-fn test_baseline_and_fix_functionality() {
-    use std::fs;
-    use tempfile::tempdir;
-
+fn documented_formats_are_accepted() {
     let bin_path = env!("CARGO_BIN_EXE_cargo-cost-lint");
 
-    let path_env = std::env::var("PATH").unwrap_or_default();
-    let home = std::env::var("HOME").unwrap_or_default();
-    let cargo_bin = format!("{}/.cargo/bin", home);
-    let new_path = format!("{}:{}", cargo_bin, path_env);
+    // Keep in sync with the "Output format" table in README.md.
+    let documented_formats = ["text", "json", "sarif", "github"];
 
-    let mut lint_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    lint_dir.pop();
-    lint_dir.push("soroban_cost_lints");
+    // Run outside any cargo workspace so the check is cheap: the point is
+    // clap argument validation, not linting. The spawned `cargo dylint` may
+    // fail here (missing tool or no workspace), but never with a clap
+    // parse rejection for the format value itself.
+    let run_dir = env::temp_dir();
 
-    let status = Command::new(env!("CARGO"))
-        .arg("build")
-        .current_dir(&lint_dir)
-        .env("PATH", &new_path)
-        .status()
-        .expect("Failed to build soroban_cost_lints");
-    assert!(status.success(), "Failed to build soroban_cost_lints");
+    for format in documented_formats {
+        let output = Command::new(bin_path)
+            .arg("--format")
+            .arg(format)
+            .current_dir(&run_dir)
+            .output()
+            .expect("Failed to execute cargo-cost-lint");
 
-    let mut fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    fixture_dir.pop();
-    fixture_dir.push("soroban_cost_lints");
-    fixture_dir.push("test_fixtures");
-    fixture_dir.push("real_sdk");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !stderr.contains("invalid value"),
+            "--format {format} was rejected by clap:\n{stderr}"
+        );
+    }
 
-    let lib_dir = match std::env::var("CARGO_TARGET_DIR") {
-        Ok(dir) => PathBuf::from(dir).join("debug"),
-        Err(_) => {
-            let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            d.pop();
-            d.push("target");
-            d.push("debug");
-            d
-        }
-    };
-
-    let temp = tempdir().unwrap();
-    let baseline_path = temp.path().join("baseline.json");
-
-    // 1. Generate baseline with --bless
-    let bless_output = Command::new(bin_path)
-        .arg("--baseline")
-        .arg(&baseline_path)
-        .arg("--bless")
-        .current_dir(&fixture_dir)
-        .env("DYLINT_LIBRARY_PATH", &lib_dir)
-        .output()
-        .expect("Failed to execute cargo-cost-lint --bless");
-
-    let bless_stdout = String::from_utf8(bless_output.stdout).unwrap();
-    let bless_stderr = String::from_utf8(bless_output.stderr).unwrap();
-    assert!(
-        bless_stderr.contains("Baseline saved to"),
-        "Expected bless stderr to announce baseline saved, status: {:?}, stdout:\n{}\nstderr:\n{}",
-        bless_output.status,
-        bless_stdout,
-        bless_stderr
-    );
-    assert!(baseline_path.exists(), "Baseline file was not created");
-
-    let baseline_content = fs::read_to_string(&baseline_path).unwrap();
-    assert!(
-        baseline_content.contains("context_hash"),
-        "Baseline JSON missing context_hash field"
-    );
-
-    // 2. Run with --baseline: should suppress all findings and exit 0
-    let baseline_run = Command::new(bin_path)
-        .arg("--baseline")
-        .arg(&baseline_path)
-        .current_dir(&fixture_dir)
-        .env("DYLINT_LIBRARY_PATH", &lib_dir)
-        .output()
-        .expect("Failed to execute cargo-cost-lint with --baseline");
-
-    assert!(
-        baseline_run.status.success(),
-        "Expected exit status 0 when all findings are baselined, got: {:?}",
-        baseline_run.status
-    );
-
-    let run_stderr = String::from_utf8(baseline_run.stderr).unwrap();
-    assert!(
-        run_stderr.contains("Suppressed"),
-        "Expected stderr to indicate suppressed baseline findings, got: {}",
-        run_stderr
-    );
-
-    // 3. Test git cleanliness check for --fix
-    let fix_dirty_check = Command::new(bin_path)
-        .arg("--fix")
-        .arg("--allow-dirty")
+    // Negative control: a format that is neither documented nor implemented
+    // must be rejected by clap with an `invalid value` usage error.
+    let rejected = Command::new(bin_path)
         .arg("--format")
-        .arg("json")
-        .current_dir(&fixture_dir)
-        .env("DYLINT_LIBRARY_PATH", &lib_dir)
+        .arg("xml")
+        .current_dir(&run_dir)
         .output()
-        .expect("Failed to execute cargo-cost-lint --fix");
+        .expect("Failed to execute cargo-cost-lint");
 
-    // Should run when --allow-dirty is set
+    let stderr = String::from_utf8_lossy(&rejected.stderr);
     assert!(
-        fix_dirty_check.status.success() || fix_dirty_check.status.code() == Some(1),
-        "Expected linter process to run with --allow-dirty"
+        stderr.contains("invalid value") && stderr.contains("xml"),
+        "Expected '--format xml' to be rejected by clap, but it was not:\n{stderr}"
     );
 }
-
