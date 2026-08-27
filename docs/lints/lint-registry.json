@@ -187,5 +187,12 @@
     "description": "unbounded recursion driven by caller-supplied input",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"
+  },
+  {
+    "category": "Memory",
+    "default_level": "warn",
+    "description": "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec",
+    "docs_path": "docs/lints/std_collection_in_contract.md",
+    "name": "std_collection_in_contract"
   }
 ]

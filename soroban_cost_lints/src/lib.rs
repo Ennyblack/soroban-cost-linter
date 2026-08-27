@@ -624,6 +624,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: UNWRAP_ON_STORAGE_GET,
         category: LintCategory::StorageOperations,
     },
+    LintMetadata {
+        lint: STD_COLLECTION_IN_CONTRACT,
+        category: LintCategory::Memory,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -663,6 +667,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         INSTANCE_STORAGE_FOR_UNBOUNDED_DATA,
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
+        STD_COLLECTION_IN_CONTRACT,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -690,6 +695,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(PersistentReadWithoutTtlExtension));
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
+    lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -3041,6 +3047,134 @@ fn is_const_expr<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
                 | hir::def::Res::Def(rustc_hir::def::DefKind::Static { .. }, _)
         ),
         _ => false,
+    }
+}
+
+// =======================================================================
+// std_collection_in_contract — Lint
+// =======================================================================
+
+// Flags `std::collections::HashMap`, `std::collections::BTreeMap`, and
+// `std::vec::Vec` usage inside Soroban contract code. These types allocate
+// in linear memory rather than through the host, inflating the deployed
+// binary (the allocator is compiled into wasm) and requiring explicit
+// conversion every time a value crosses the host boundary.
+//
+// The lint fires inside `#[contractimpl]` blocks and skips code that is
+// inside `#[cfg(test)]` modules or functions annotated with `#[test]`,
+// where std collections are idiomatic and correct.
+//
+// Detection: for method calls (`map.insert(...)`, `vec.push(...)`), the
+// receiver type is checked against the std collection ADT paths. For
+// constructor calls (`HashMap::new()`, `Vec::new()`), the callee's DefId
+// is resolved and its parent module is inspected to determine if it
+// belongs to a std collection type.
+rustc_session::declare_lint! {
+    pub STD_COLLECTION_IN_CONTRACT,
+    Warn,
+    "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec"
+}
+/// Concrete pass that fires [`STD_COLLECTION_IN_CONTRACT`].
+pub struct StdCollectionInContract;
+rustc_session::impl_lint_pass!(StdCollectionInContract => [STD_COLLECTION_IN_CONTRACT]);
+
+/// Paths of std collection types that should be replaced with Soroban SDK
+/// equivalents. Matched via `match_soroban_def_path` (ends-with comparison).
+const STD_COLLECTION_TYPES: &[&[&str]] = &[
+    &["std", "collections", "HashMap"],
+    &["std", "collections", "BTreeMap"],
+    &["std", "vec", "Vec"],
+];
+
+/// Constructor method names for std collection types. A call to one of these
+/// on a path whose parent module belongs to a std collection type is flagged.
+const STD_COLLECTION_CTOR_METHODS: &[&str] = &["new", "with_capacity"];
+
+/// Returns `true` if the expression sits inside a `#[contractimpl]` block.
+///
+/// Walks the HIR owner hierarchy from `expr` upward. For each enclosing
+/// `Impl` item, checks whether it carries the `#[contractimpl]` attribute
+/// (either bare `#[contractimpl]` or namespaced `#[contractimpl::...]`).
+/// Stops as soon as a match is found.
+fn is_in_contract_code<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    use rustc_hir::{ItemKind, OwnerNode};
+
+    // `#[contractimpl]` is a custom Soroban attribute, not a compiler-known
+    // symbol, so we intern the name at runtime.
+    let contractimpl_sym = rustc_span::symbol::Symbol::intern("contractimpl");
+
+    cx.tcx
+        .hir_parent_owner_iter(expr.hir_id)
+        .filter(|(_, node)| {
+            matches!(node, OwnerNode::Item(item) if matches!(item.kind, ItemKind::Impl(_)))
+        })
+        .any(|(owner_id, _)| {
+            let impl_hir_id = cx.tcx.local_def_id_to_hir_id(owner_id.def_id);
+            let attrs = cx.tcx.hir_attrs(impl_hir_id);
+            // Check for bare `#[contractimpl]` or namespaced `#[contractimpl::...]`.
+            attrs.iter().any(|attr| {
+                let segments = attr.path();
+                segments.first().is_some_and(|s| *s == contractimpl_sym)
+            })
+        })
+}
+
+impl<'tcx> LateLintPass<'tcx> for StdCollectionInContract {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        // Skip test code — std collections are idiomatic in tests.
+        if is_in_test(cx.tcx, expr.hir_id) {
+            return;
+        }
+
+        // Only fire inside #[contractimpl] blocks.
+        if !is_in_contract_code(cx, expr) {
+            return;
+        }
+
+        let uses_std_collection = match expr.kind {
+            // Method calls: map.insert(), vec.push(), etc.
+            hir::ExprKind::MethodCall(_, receiver, _, _) => {
+                let receiver_ty = cx.typeck_results().expr_ty(receiver).peel_refs();
+                if let rustc_middle::ty::Adt(adt_def, _) = receiver_ty.kind() {
+                    matches_any_path(cx, adt_def.did(), STD_COLLECTION_TYPES)
+                } else {
+                    false
+                }
+            }
+
+            // Constructor calls: HashMap::new(), Vec::new(), etc.
+            // The callee's type from typeck is FnDef(did, args), so we can
+            // extract the DefId directly from the type.
+            hir::ExprKind::Call(callee, _) => {
+                let callee_ty = cx.typeck_results().expr_ty(callee);
+                if let rustc_middle::ty::FnDef(callee_did, _) = callee_ty.kind() {
+                    let callee_path = cached_def_path_str(cx.tcx, *callee_did);
+                    let method_name = cx.tcx.item_name(*callee_did);
+                    let method_name_str = method_name.as_str();
+                    STD_COLLECTION_TYPES.iter().any(|type_segments| {
+                        let type_suffix = type_segments.join("::");
+                        callee_path.contains(&type_suffix)
+                            && STD_COLLECTION_CTOR_METHODS.contains(&method_name_str)
+                    })
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+
+        if uses_std_collection {
+            span_lint_and_help(
+                cx,
+                STD_COLLECTION_IN_CONTRACT,
+                expr.span,
+                "std collection type used in contract code",
+                None,
+                "use soroban_sdk::Map instead of std::collections::HashMap/BTreeMap, \
+                 and soroban_sdk::Vec instead of std::vec::Vec; std collections allocate \
+                 in wasm linear memory, inflate the binary, and require conversion at the host boundary",
+            );
+        }
     }
 }
 
