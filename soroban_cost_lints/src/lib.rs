@@ -1077,13 +1077,15 @@ impl<'tcx> LateLintPass<'tcx> for RedundantEnvClone {
                 return;
             }
 
-            span_lint_and_help(
+            let receiver_snippet = snippet_opt(cx, receiver.span).unwrap_or_else(|| "env".to_string());
+            span_lint_and_sugg(
                 cx,
                 REDUNDANT_ENV_CLONE,
                 expr.span,
                 "redundant clone on Env object",
-                None,
                 "pass Env by reference or value instead of cloning",
+                receiver_snippet,
+                Applicability::MachineApplicable,
             );
         }
     }
