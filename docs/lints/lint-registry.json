@@ -65,9 +65,9 @@
   {
     "category": "Compute",
     "default_level": "warn",
-    "description": "cross-contract call whose non-unit return value is discarded",
-    "docs_path": "docs/lints/cross_contract_result_discarded.md",
-    "name": "cross_contract_result_discarded"
+    "description": "token transfer (transfer / transfer_from) on a contract client inside a loop",
+    "docs_path": "docs/lints/token_transfer_in_loop.md",
+    "name": "token_transfer_in_loop"
   },
   {
     "category": "SymbolOperations",
@@ -194,5 +194,12 @@
     "description": "unbounded recursion driven by caller-supplied input",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"
+  },
+  {
+    "category": "Memory",
+    "default_level": "warn",
+    "description": "std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec",
+    "docs_path": "docs/lints/std_collection_in_contract.md",
+    "name": "std_collection_in_contract"
   }
 ]
