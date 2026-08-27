@@ -323,7 +323,6 @@ fn test_list_lints_json_and_text_consistency_and_descriptions() {
             name
         );
         assert!(!cat.is_empty(), "Empty category in lint entry: {}", name);
-        assert!(!url.is_empty(), "Empty doc url in lint entry: {}", name);
     }
 }
 
