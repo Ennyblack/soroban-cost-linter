@@ -821,14 +821,13 @@ rustc_session::impl_lint_pass!(NestedLoopStorageAccess => [NESTED_LOOP_STORAGE_A
 /// a closure body inside a loop is still inside the same loop. The visitor
 /// stops at function definitions (`fn`, closures) since a nested function
 /// may be called from anywhere.
-struct LoopDepthVisitor<'a, 'tcx> {
-    cx: &'a LateContext<'tcx>,
+struct LoopDepthVisitor {
     target: HirId,
     depth: u32,
     found: bool,
 }
 
-impl<'a, 'tcx> Visitor<'tcx> for LoopDepthVisitor<'a, 'tcx> {
+impl<'tcx> Visitor<'tcx> for LoopDepthVisitor {
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         if self.found {
             return;
@@ -837,7 +836,7 @@ impl<'a, 'tcx> Visitor<'tcx> for LoopDepthVisitor<'a, 'tcx> {
         match expr.kind {
             hir::ExprKind::Loop(body, _, _, _) => {
                 self.depth += 1;
-                self.visit_expr(body);
+                self.visit_block(body);
                 if !self.found {
                     self.depth -= 1;
                 }
@@ -868,16 +867,19 @@ impl<'a, 'tcx> Visitor<'tcx> for LoopDepthVisitor<'a, 'tcx> {
 
 impl<'tcx> LateLintPass<'tcx> for NestedLoopStorageAccess {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
-        let is_storage_access = if let hir::ExprKind::MethodCall(
-            path_segment, receiver, _args, _span,
-        ) = expr.kind
-        {
-            let method_name = path_segment.ident.name.as_str();
-            let is_terminal = matches!(method_name, "get" | "has" | "set" | "remove");
-            is_terminal && is_type_match(cx, cx.typeck_results().expr_ty(receiver), SOROBAN_STORAGE_TYPES)
-        } else {
-            false
-        };
+        let is_storage_access =
+            if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+                let method_name = path_segment.ident.name.as_str();
+                let is_terminal = matches!(method_name, "get" | "has" | "set" | "remove");
+                is_terminal
+                    && is_type_match(
+                        cx,
+                        cx.typeck_results().expr_ty(receiver),
+                        SOROBAN_STORAGE_TYPES,
+                    )
+            } else {
+                false
+            };
 
         if !is_storage_access {
             return;
@@ -886,7 +888,6 @@ impl<'tcx> LateLintPass<'tcx> for NestedLoopStorageAccess {
         // Walk the HIR tree from the crate root to find the target expression
         // and compute its loop nesting depth.
         let mut visitor = LoopDepthVisitor {
-            cx,
             target: expr.hir_id,
             depth: 0,
             found: false,
@@ -894,8 +895,7 @@ impl<'tcx> LateLintPass<'tcx> for NestedLoopStorageAccess {
 
         // Start walking from the enclosing function body.
         let owner = cx.tcx.hir_enclosing_body_owner(expr.hir_id);
-        let body_id = cx.tcx.hir_body_owned_by(owner);
-        let body = cx.tcx.hir_body(body_id);
+        let body = cx.tcx.hir_body_owned_by(owner);
         visitor.visit_body(body);
 
         if visitor.found && visitor.depth >= 2 {

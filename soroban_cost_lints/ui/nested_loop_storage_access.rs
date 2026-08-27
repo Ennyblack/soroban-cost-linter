@@ -143,12 +143,12 @@ fn single_loop_loop(env: Env) {
 
 fn nested_function_not_counted(env: Env) {
     for i in 0..5 {
-        fn inner_func(env: Env, x: i32) {
+        fn inner_func(env: &Env, x: i32) {
             for j in 0..5 {
                 env.storage().instance().set(&(x + j), &1); // Good — inner_func's loops are not nested inside outer
             }
         }
-        inner_func(env, i);
+        inner_func(&env, i);
     }
 }
 

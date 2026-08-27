@@ -9,6 +9,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | Lint | Default Severity | Description | Docs |
 |------|------------------|-------------|------|
 | `soroban_storage_in_loop` | warn | storage operations inside a loop | [Link](lints/soroban_storage_in_loop.md) |
+| `nested_loop_storage_access` | deny | storage operation inside a nested loop — O(n·m) cost | [Link](lints/nested_loop_storage_access.md) |
 | `loop_invariant_storage_access` | warn | storage operation inside a loop whose operands are provably loop-invariant | [Link](lints/loop_invariant_storage_access.md) |
 | `soroban_inefficient_bytes_concat` | warn | inefficient Bytes concatenation inside a loop | [Link](lints/soroban_inefficient_bytes_concat.md) |
 | `soroban_redundant_storage_read` | warn | multiple sequential reads of the same storage key without modification | [Link](lints/soroban_redundant_storage_read.md) |
