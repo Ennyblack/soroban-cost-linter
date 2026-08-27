@@ -184,6 +184,13 @@
   {
     "category": "Compute",
     "default_level": "warn",
+    "description": "chain of three or more Val-boundary conversions carrying the same value",
+    "docs_path": "docs/lints/val_conversion_chain.md",
+    "name": "val_conversion_chain"
+  },
+  {
+    "category": "Compute",
+    "default_level": "warn",
     "description": "unbounded recursion driven by caller-supplied input",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"

@@ -133,6 +133,13 @@ Fires on `.clone()` calls on `Env`. `Env` is a lightweight copyable handle.
 
 - **Consumed Env:** Where `Env` is consumed by value before a clone site, or in generic contexts that do not guarantee copy semantics.
 
+### `val_conversion_chain`
+
+Flags a chain of three or more `into_val` / `try_into_val` / `from_val` / `try_from_val` calls that bounce the same local value through `Val` across a `let` sequence.
+
+- **Forced signatures:** Helper functions with fixed, non-negotiable `Val`/native signatures can make a long chain look gratuitous while each hop is individually required by an API you do not control. Such cases should be silenced with `#[allow(val_conversion_chain)]` and, where possible, by adjusting the helper signatures so the value is converted directly into the shape the next step needs.
+- **Genuine value changes:** A conversion that produces a semantically different value for the next step (not merely re-packaging the same data) is out of scope; only needless multi-hop re-packaging is flagged.
+
 ### `symbol_new_for_short_literal`
 
 Fires when `Symbol::new(&env, "short")` is used with a literal string <= 9 characters.
