@@ -119,6 +119,13 @@ Flags cross-contract invocations (`Client::new(&env, &addr).method(...)`) inside
 - **Overhead:** Each cross-contract call invokes host context switching and separate auth/cost accounting.
 - **Handling:** Batch cross-contract calls where possible; suppress with `#[allow(contract_call_in_loop)]` when per-item cross-contract dispatch is required.
 
+### `cross_contract_result_discarded`
+
+Flags a `Env::invoke_contract` whose non-unit result is bound to `_` (`let _ = ...`) or dropped as a bare statement (`invoke_contract(...);`). A call whose result is bound to a named variable, used as an argument, or whose result type is the unit type `()` does not fire.
+
+- **Overhead:** A cross-contract invocation pays for a full host-side dispatch, its own metered execution, and the conversion of the return value back across the guest/host boundary. Discarding that value pays for all of it to learn nothing.
+- **False positives:** When the call is made purely for its side effect and the return value is genuinely uninteresting (e.g. firing an event on another contract, triggering a state change), the warning is intentional-but-expected. Silence it deliberately by binding to a named variable (e.g. `let _result = env.invoke_contract::<T>(...);`) or with `#[allow(cross_contract_result_discarded)]`.
+
 ### `unnecessary_host_function_call`
 
 Flags host function calls inside loops whose arguments do not depend on loop state.

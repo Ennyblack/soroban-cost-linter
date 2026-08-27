@@ -63,6 +63,13 @@
     "name": "contract_call_in_loop"
   },
   {
+    "category": "Compute",
+    "default_level": "warn",
+    "description": "cross-contract call whose non-unit return value is discarded",
+    "docs_path": "docs/lints/cross_contract_result_discarded.md",
+    "name": "cross_contract_result_discarded"
+  },
+  {
     "category": "SymbolOperations",
     "default_level": "warn",
     "description": "Symbol::new used with a short literal that could use symbol_short! macro",

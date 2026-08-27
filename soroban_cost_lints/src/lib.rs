@@ -545,6 +545,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
+        lint: CROSS_CONTRACT_RESULT_DISCARDED,
+        category: LintCategory::Compute,
+    },
+    LintMetadata {
         lint: LOOP_INVARIANT_STORAGE_ACCESS,
         category: LintCategory::StorageOperations,
     },
@@ -643,6 +647,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         UNBOUNDED_RECURSION,
         HOST_IN_LOOP,
         CONTRACT_CALL_IN_LOOP,
+        CROSS_CONTRACT_RESULT_DISCARDED,
         LOOP_INVARIANT_STORAGE_ACCESS,
         SOROBAN_INEFFICIENT_BYTES_CONCAT,
         INEFFICIENT_BYTES_CONCAT,
@@ -671,6 +676,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(UnboundedRecursion::default()));
     lint_store.register_late_pass(|_| Box::new(HostInLoop));
     lint_store.register_late_pass(|_| Box::new(ContractCallInLoop));
+    lint_store.register_late_pass(|_| Box::new(CrossContractResultDiscarded));
     lint_store.register_late_pass(|_| Box::new(LoopInvariantStorageAccess));
     lint_store.register_late_pass(|_| Box::new(SorobanInefficientBytesConcat));
     lint_store.register_late_pass(|_| Box::new(InefficientBytesConcat));
@@ -1277,6 +1283,78 @@ impl<'tcx> LateLintPass<'tcx> for ContractCallInLoop {
                     "cross-contract call inside a loop",
                     None,
                     "add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations",
+                );
+            }
+        }
+    }
+}
+
+// =======================================================================
+// cross_contract_result_discarded — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub CROSS_CONTRACT_RESULT_DISCARDED,
+    Warn,
+    "cross-contract call whose non-unit return value is discarded"
+}
+/// Concrete pass that fires [`CROSS_CONTRACT_RESULT_DISCARDED`].
+pub struct CrossContractResultDiscarded;
+rustc_session::impl_lint_pass!(CrossContractResultDiscarded => [CROSS_CONTRACT_RESULT_DISCARDED]);
+
+/// Whether `expr` is a discarded expression in one of the two clear senses:
+///
+/// 1. It is the initialiser of a `let _ = ...` binding (the wildcard pattern),
+///    so the value is produced and then thrown away.
+/// 2. It is the operand of a bare `expr;` statement (`StmtKind::Semi`), i.e. a
+///    call dropped as a statement.
+///
+/// Any other position — a named binding (`let x =`), an argument, the tail of a
+/// block, the right-hand side of a field/return — counts as "used" and is not
+/// reported. This deliberately stays a structural check rather than a general
+/// dead-code analysis (see issue #365).
+fn expr_result_discarded<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    let parent = cx.tcx.parent_hir_node(expr.hir_id);
+    match parent {
+        hir::Node::Stmt(stmt) => matches!(stmt.kind, hir::StmtKind::Semi(_)),
+        hir::Node::LetStmt(let_stmt) => matches!(let_stmt.pat.kind, hir::PatKind::Wild),
+        _ => false,
+    }
+}
+
+impl<'tcx> LateLintPass<'tcx> for CrossContractResultDiscarded {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "invoke_contract"
+        {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled_ty = receiver_ty.peel_refs();
+
+            let is_env = if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "Env"])
+            } else {
+                false
+            };
+
+            if !is_env {
+                return;
+            }
+
+            // A call whose result is `()` has nothing to discard — `Env`'s
+            // `invoke_contract<T>` with `T = ()` returns the unit type and the
+            // warning would be noise.
+            if cx.typeck_results().expr_ty(expr).is_unit() {
+                return;
+            }
+
+            if expr_result_discarded(cx, expr) {
+                span_lint_and_help(
+                    cx,
+                    CROSS_CONTRACT_RESULT_DISCARDED,
+                    expr.span,
+                    "cross-contract call result discarded",
+                    None,
+                    "a cross-contract invocation pays for a full host dispatch, its own metered execution, and converting the return value back across the boundary; if the call is made for its side effect and the return value is not needed, bind it to a named variable (e.g. `let _result = ...`) or silence this lint with `#[allow(cross_contract_result_discarded)]`",
                 );
             }
         }

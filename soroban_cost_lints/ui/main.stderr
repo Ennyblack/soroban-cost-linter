@@ -300,19 +300,19 @@ LL |         map.insert(&i, &1); // Good (allowed)
    = help: accumulate values in native Rust collections first, then batch host operations or convert to SDK containers once after the loop; pre-size where practical
 
 warning: cross-contract call inside a loop
-  --> $DIR/main.rs:521:22
+  --> $DIR/main.rs:521:28
    |
-LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
    = note: `#[warn(contract_call_in_loop)]` on by default
 
 warning: cross-contract call inside a loop
-  --> $DIR/main.rs:528:22
+  --> $DIR/main.rs:528:28
    |
-LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
 
@@ -342,10 +342,10 @@ LL |         env.crypto().ed25519_verify(&key, &msg, &sig); // Good (allowed)
    = help: cache the result outside the loop when the call is loop-invariant
 
 warning: cross-contract call inside a loop
-  --> $DIR/main.rs:583:22
+  --> $DIR/main.rs:583:28
    |
-LL |         let _: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
-   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |         let _result: i32 = env.invoke_contract(&addr, &func, ()); // Should Warn
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: add a bulk endpoint on the callee contract, or hoist this call out of the loop if its result is invariant across iterations
 
