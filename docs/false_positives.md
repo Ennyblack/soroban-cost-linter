@@ -317,3 +317,11 @@ Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called 
 
 
 
+
+## `collection_len_in_loop_condition`
+
+### False Positives
+If a collection is mutated in a way that our lint cannot statically track (e.g., via interior mutability, or a cross-function call that mutates it but appears opaque to the lint pass), we may falsely suggest hoisting `.len()`. To be safe, the lint uses Clipy's `mutated_variables` utility, which conservatively assumes mutation if it sees borrows passed to external functions, but it can still miss complex cases.
+
+### False Negatives
+If a collection's `.len()` is inside a loop, but the collection is genuinely invariant, yet the lint sees a mutable borrow of the collection anywhere inside the loop (even if that borrow doesn't actually mutate the length, e.g., modifying an element in place), the lint will defensively bail and NOT warn, missing a valid hoist opportunity.

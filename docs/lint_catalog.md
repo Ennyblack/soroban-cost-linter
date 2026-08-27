@@ -35,5 +35,6 @@ This document provides a concise reference for all lints supported by **soroban-
 | `formatted_panic_payload` | warn | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract | [Link](lints/formatted_panic_payload.md) |
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
+| `collection_len_in_loop_condition` | warn | collection len() called in a loop condition without mutation | [Link](lints/collection_len_in_loop_condition.md) |
 
 *Severities can be overridden via `budget.toml`.*

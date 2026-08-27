@@ -60,6 +60,12 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`symbol_new_for_short_literal`](symbol_new_for_short_literal.md) | `warn` | Symbol::new used with a short literal that could use symbol_short! macro |
 
+## Other
+
+| Lint | Default Severity | Catches |
+| --- | --- | --- |
+| [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
+
 {% hint style="info" %}
 Severities can be adjusted per-workspace via `budget.toml` — see the [Integration Guide](../integration.md).
 {% endhint %}

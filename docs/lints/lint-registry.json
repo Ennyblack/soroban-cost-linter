@@ -187,5 +187,12 @@
     "description": "unbounded recursion driven by caller-supplied input",
     "docs_path": "docs/lints/unbounded_recursion.md",
     "name": "unbounded_recursion"
+  },
+  {
+    "category": "Other",
+    "default_level": "warn",
+    "description": "collection len() called in a loop condition without mutation",
+    "docs_path": "docs/lints/collection_len_in_loop_condition.md",
+    "name": "collection_len_in_loop_condition"
   }
 ]
