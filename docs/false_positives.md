@@ -128,22 +128,12 @@ Flags cross-contract invocations (`env.invoke_contract(&addr, &sym, ())`) inside
 - **Overhead:** Each cross-contract call invokes host context switching and separate auth/cost accounting.
 - **Handling:** Batch cross-contract calls where possible; suppress with `#[allow(contract_call_in_loop)]` when per-item cross-contract dispatch is required.
 
-### `host_in_loop`
+### `cross_contract_result_discarded`
 
-Flags any method call on a `Host` object (`env.host()...`) inside a loop body. Unlike `unnecessary_host_function_call`, this lint performs no loop-invariance analysis — a `Host` use in a loop is always surfaced.
+Flags a `Env::invoke_contract` whose non-unit result is bound to `_` (`let _ = ...`) or dropped as a bare statement (`invoke_contract(...);`). A call whose result is bound to a named variable, used as an argument, or whose result type is the unit type `()` does not fire.
 
-- **Overhead:** `Host` operations cross the guest/host boundary and are metered per call.
-- **Loop-invariance:** Because the lint does not check whether the call result is loop-invariant, even a genuinely hoistable `Host` call is flagged. Hoist the `env.host()`-derived handle or the call itself outside the loop when the result is reused.
-- **Handling:** Suppress with `#[allow(host_in_loop)]` when every in-loop `Host` interaction is required.
-
-### `linear_scan_in_loop`
-
-Flags linear-time scans (`contains`, `position`, `find`) on a Soroban `Vec`/`Map` inside a loop when the scan argument does not depend on loop state.
-
-- **Overhead:** A per-iteration scan is O(n) on the collection, yielding O(n²) total cost.
-- **Near-miss — loop-variant argument:** a scan whose argument is the loop variable (e.g. `v.contains(&x)`) is genuinely per-iteration work and is correctly *not* flagged.
-- **Near-miss — impure argument:** an argument containing a method/function call is conservatively treated as loop-variant and the warning is suppressed.
-- **Handling:** Build a `Map` lookup outside the loop for O(1) access, or suppress with `#[allow(linear_scan_in_loop)]` when the scan is inherent to the algorithm.
+- **Overhead:** A cross-contract invocation pays for a full host-side dispatch, its own metered execution, and the conversion of the return value back across the guest/host boundary. Discarding that value pays for all of it to learn nothing.
+- **False positives:** When the call is made purely for its side effect and the return value is genuinely uninteresting (e.g. firing an event on another contract, triggering a state change), the warning is intentional-but-expected. Silence it deliberately by binding to a named variable (e.g. `let _result = env.invoke_contract::<T>(...);`) or with `#[allow(cross_contract_result_discarded)]`.
 
 ### `unnecessary_host_function_call`
 
