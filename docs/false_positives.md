@@ -71,6 +71,14 @@ Every storage read or write inside any loop body is flagged.
 - **Counting or scanning patterns** — using a loop to count entries or scan through storage with `has()`.
 - **Handling:** Suppress intentional batch operations using `#[allow(soroban_storage_in_loop)]`.
 
+### `nested_loop_storage_access`
+
+Fires on storage operations at loop nesting depth ≥ 2 — i.e., a storage access inside two or more nested loops.
+
+- **Nested loop with intentional per-iteration writes** — writing to different keys in both loops where the multiplicative cost is inherent to the algorithm.
+- **Closures inside nested loops** — a closure body inside a nested loop that performs a storage access; the closure is the inner loop's body, not a separate nesting level.
+- **Handling:** If the nested storage access is intentional and the multiplicative cost is acceptable, suppress with `#[allow(nested_loop_storage_access)]`.
+
 ### `storage_write_without_read`
 
 Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` anywhere in the same function.

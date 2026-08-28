@@ -525,6 +525,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
+        lint: NESTED_LOOP_STORAGE_ACCESS,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
         lint: LOOP_INVARIANT_STORAGE_ACCESS,
         category: LintCategory::StorageOperations,
     },
@@ -665,6 +669,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
+        NESTED_LOOP_STORAGE_ACCESS,
         SOROBAN_REDUNDANT_STORAGE_READ,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
@@ -699,6 +704,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         EXCESSIVE_VEC_CAPACITY,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
+    lint_store.register_late_pass(|_| Box::new(NestedLoopStorageAccess));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
@@ -835,6 +841,124 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     "move storage operations out of the loop or accumulate mutations in memory first",
                 );
             }
+        }
+    }
+}
+
+// =======================================================================
+// nested_loop_storage_access — Lint
+// =======================================================================
+
+// Flags storage operations at nesting depth >= 2. A single loop with a
+// storage op is already caught by `soroban_storage_in_loop`; this lint
+// separates the quadratic case (nested loops) so it can carry a stronger
+// message and a different default severity. Depth is computed correctly
+// across for, while, loop, and iterator-closure bodies. A closure body
+// inside a loop is still inside the loop; a loop inside a nested function
+// definition is not.
+rustc_session::declare_lint! {
+    pub NESTED_LOOP_STORAGE_ACCESS,
+    Deny,
+    "storage operation inside a nested loop — O(n·m) cost"
+}
+/// Concrete pass that fires [`NESTED_LOOP_STORAGE_ACCESS`].
+pub struct NestedLoopStorageAccess;
+rustc_session::impl_lint_pass!(NestedLoopStorageAccess => [NESTED_LOOP_STORAGE_ACCESS]);
+
+/// Visitor that computes the loop nesting depth of a target expression by
+/// walking the HIR tree. Increments the counter for `for`, `while`, and
+/// `loop` constructs. Closures are **not** counted as additional nesting —
+/// a closure body inside a loop is still inside the same loop. The visitor
+/// stops at function definitions (`fn`, closures) since a nested function
+/// may be called from anywhere.
+struct LoopDepthVisitor {
+    target: HirId,
+    depth: u32,
+    found: bool,
+}
+
+impl<'tcx> Visitor<'tcx> for LoopDepthVisitor {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if self.found {
+            return;
+        }
+
+        match expr.kind {
+            hir::ExprKind::Loop(body, _, _, _) => {
+                self.depth += 1;
+                self.visit_block(body);
+                if !self.found {
+                    self.depth -= 1;
+                }
+                return;
+            }
+            hir::ExprKind::Closure(_) => {
+                // Closure body inside a loop is still inside the loop;
+                // do not count the closure as an additional nesting level.
+                // Visit the closure body to find the target inside it.
+                intravisit::walk_expr(self, expr);
+                return;
+            }
+            _ => {}
+        }
+
+        // Check if this is the target expression.
+        if expr.hir_id == self.target {
+            self.found = true;
+            return;
+        }
+
+        intravisit::walk_expr(self, expr);
+    }
+
+    // Don't descend into nested function definitions.
+    fn visit_item(&mut self, _item: &'tcx hir::Item<'tcx>) {}
+}
+
+impl<'tcx> LateLintPass<'tcx> for NestedLoopStorageAccess {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        let is_storage_access =
+            if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+                let method_name = path_segment.ident.name.as_str();
+                let is_terminal = matches!(method_name, "get" | "has" | "set" | "remove");
+                is_terminal
+                    && is_type_match(
+                        cx,
+                        cx.typeck_results().expr_ty(receiver),
+                        SOROBAN_STORAGE_TYPES,
+                    )
+            } else {
+                false
+            };
+
+        if !is_storage_access {
+            return;
+        }
+
+        // Walk the HIR tree from the crate root to find the target expression
+        // and compute its loop nesting depth.
+        let mut visitor = LoopDepthVisitor {
+            target: expr.hir_id,
+            depth: 0,
+            found: false,
+        };
+
+        // Start walking from the enclosing function body.
+        let owner = cx.tcx.hir_enclosing_body_owner(expr.hir_id);
+        let body = cx.tcx.hir_body_owned_by(owner);
+        visitor.visit_body(body);
+
+        if visitor.found && visitor.depth >= 2 {
+            span_lint_and_help(
+                cx,
+                NESTED_LOOP_STORAGE_ACCESS,
+                expr.span,
+                "storage operation inside a nested loop — cost is O(n·m)",
+                None,
+                "this storage access runs on every iteration of both loops, so its cost is \
+                 multiplicative rather than linear; hoist it out of at least one loop or \
+                 accumulate mutations in memory",
+            );
         }
     }
 }

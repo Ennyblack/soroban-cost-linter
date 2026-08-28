@@ -8,6 +8,13 @@
   },
   {
     "category": "StorageOperations",
+    "default_level": "deny",
+    "description": "storage operation inside a nested loop — O(n·m) cost",
+    "docs_path": "docs/lints/nested_loop_storage_access.md",
+    "name": "nested_loop_storage_access"
+  },
+  {
+    "category": "StorageOperations",
     "default_level": "warn",
     "description": "storage operation inside a loop whose operands are provably loop-invariant",
     "docs_path": "docs/lints/loop_invariant_storage_access.md",
