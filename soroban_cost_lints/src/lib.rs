@@ -3266,294 +3266,235 @@ impl<'tcx> LateLintPass<'tcx> for UnwrapOnStorageGet {
 }
 
 // =======================================================================
-// val_conversion_chain — Lint
+// redundant_val_conversion — Lint
 // =======================================================================
 
-/// Minimum number of Val-boundary conversions a single value must pass through
-/// before [`VAL_CONVERSION_CHAIN`] fires.
-///
-/// Two conversions (`T -> Val -> U`) is the minimal round trip that a single
-/// foreign API boundary demands, and it is the turf of `redundant_val_conversion`.
-/// Three or more means the value has been bounced through `Val` at least twice,
-/// almost always because two helpers each wanted a different shape and the
-/// author bridged them at the call site — three metered host calls to move one
-/// value where a direct `T -> U` conversion would have done it in one.
-const VAL_CONVERSION_CHAIN_MIN_HOPS: usize = 3;
-
+// Flags two structurally-redundant crossings of the native-Rust/Val boundary:
+//
+// 1. A conversion into the type the value already is, e.g. `u32::try_from_val`
+//    on a value that is already `u32`. No metered work is saved by the hop, so
+//    the call is pure waste.
+// 2. A round trip — `x.into_val(env)` immediately fed to
+//    `T::try_from_val(env, &...)` where `T` is the original type of `x`. The
+//    value is converted into `Val` and back into itself within one expression
+//    chain, burning two host calls to produce the value it started with.
+//
+// Both patterns are input-independent: the cost is the same for every input,
+// so they are exactly the kind of structural waste this linter exists to catch.
+// Detection compares the *source* and *target* types of the conversion through
+// `LateContext` (not just the method name), which is what separates this lint
+// from the name-and-shape matching most others do.
 rustc_session::declare_lint! {
-    pub VAL_CONVERSION_CHAIN,
+    pub REDUNDANT_VAL_CONVERSION,
     Warn,
-    "chain of three or more Val-boundary conversions carrying the same value"
+    "redundant conversion across the native-Rust/Val boundary"
 }
-/// Concrete pass that fires [`VAL_CONVERSION_CHAIN`].
-pub struct ValConversionChain;
-rustc_session::impl_lint_pass!(ValConversionChain => [VAL_CONVERSION_CHAIN]);
+/// Concrete pass that fires [`REDUNDANT_VAL_CONVERSION`].
+pub struct RedundantValConversion;
+rustc_session::impl_lint_pass!(RedundantValConversion => [REDUNDANT_VAL_CONVERSION]);
 
-/// One Val-boundary conversion on a local binding, as discovered in a block.
-struct ValConversion<'tcx> {
-    /// The local binding (`HirId`) that feeds this conversion — the
-    /// underlying value flowing into the hop.
-    input_local: HirId,
-    /// The conversion expression itself, kept so the diagnostic can highlight
-    /// the culminating hop of the chain.
-    expr: hir::Expr<'tcx>,
-}
-
-/// The four Soroban conversion trait methods that cross the native/`Val`
-/// boundary. Each carries the `Env` so the host is involved on every hop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
-enum ValConvKind {
-    IntoVal,
-    TryIntoVal,
-    FromVal,
-    TryFromVal,
-}
-
-/// Identifies which `soroban_sdk` conversion trait method `expr` resolves to,
-/// or `None` if `expr` is not one of the four Val-boundary conversions.
-fn val_conv_kind<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> Option<ValConvKind> {
-    let def_id = cx.typeck_results().type_dependent_def_id(expr.hir_id)?;
-    let path = cx.tcx.def_path_str(def_id);
-    if path.ends_with("IntoVal::into_val") {
-        Some(ValConvKind::IntoVal)
-    } else if path.ends_with("TryIntoVal::try_into_val") {
-        Some(ValConvKind::TryIntoVal)
-    } else if path.ends_with("FromVal::from_val") {
-        Some(ValConvKind::FromVal)
-    } else if path.ends_with("TryFromVal::try_from_val") {
-        Some(ValConvKind::TryFromVal)
-    } else {
-        None
+/// Strips any number of leading `&`s (and `&mut`s) off an expression, returning
+/// the innermost referent. Used to see through the `&val` wrappers that
+/// `try_from_val(env, &x)` applies to its value argument: the wrapped node, not
+/// the borrow, is what we want to inspect for an inner conversion.
+fn unwrap_borrows<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
+        expr = inner;
     }
+    expr
 }
 
-/// Whether `ty` is `soroban_sdk::Val` (after peeling references).
-fn is_val_ty<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> bool {
-    if let rustc_middle::ty::TyKind::Adt(adt, _) = ty.peel_refs().kind()
-        && match_soroban_def_path(cx, adt.did(), &["soroban_sdk", "Val"])
-    {
-        true
-    } else {
-        false
-    }
-}
-
-/// Strips the `Result<T, E>` wrapping that `try_into_val` / `try_from_val`
-/// produce, so the target type of the conversion can be compared against `Val`.
-fn peel_result<'tcx>(cx: &LateContext<'tcx>, ty: Ty<'tcx>) -> Ty<'tcx> {
-    if let rustc_middle::ty::TyKind::Adt(adt, args) = ty.peel_refs().kind()
-        && cx.tcx.is_diagnostic_item(sym::Result, adt.did())
-    {
-        args.type_at(0)
-    } else {
-        ty
-    }
-}
-
-/// Walks an expression down to the local binding that *carries the underlying
-/// value* being converted, peeling the identity wrappers authors habitually
-/// insert (`clone`, `as_ref`, `borrow`, `deref`, `to_owned`, `&`, field
-/// accesses) so a hop like `a.clone().into_val(env)` still links back to `a`.
-fn peel_to_local<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> Option<HirId> {
-    match expr.kind {
-        hir::ExprKind::Path(hir::QPath::Resolved(None, path)) => {
-            if let hir::def::Res::Local(id) = path.res {
-                Some(id)
-            } else {
-                None
-            }
-        }
-        hir::ExprKind::AddrOf(_, _, inner) => peel_to_local(inner),
-        hir::ExprKind::Field(base, _) => peel_to_local(base),
-        hir::ExprKind::MethodCall(seg, recv, _, _) => match seg.ident.name.as_str() {
-            "clone" | "as_ref" | "as_mut" | "borrow" | "deref" | "to_owned" => peel_to_local(recv),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Strips the `unwrap` / `expect` / `unwrap_or*` family of method calls that
-/// authors wrap around a `try_into_val` / `try_from_val` result, so the
-/// underlying conversion is what gets classified and reported.
-fn peel_unwrap<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
-    let mut cur = expr;
-    while let hir::ExprKind::MethodCall(seg, recv, _, _) = cur.kind
-        && matches!(
-            seg.ident.name.as_str(),
-            "unwrap" | "expect" | "unwrap_or" | "unwrap_or_else" | "unwrap_or_default"
-        )
-    {
-        cur = recv;
-    }
-    cur
-}
-
-/// If `expr` is a Val-boundary conversion, returns the binding that feeds it
-/// and the conversion expression. A conversion is only a *Val* hop when either
-/// its source or target type is `soroban_sdk::Val`, which excludes the blanket
-/// `T: Into<U>` `IntoVal` impl that performs a cheap native-only conversion.
-fn classify_val_conversion<'tcx>(
+/// Whether `ty` is `core::result::Result<T, _>`, returning `T` if so.
+fn result_ok_type<'tcx>(
     cx: &LateContext<'tcx>,
-    expr: &'tcx hir::Expr<'tcx>,
-) -> Option<ValConversion<'tcx>> {
-    // Authors nearly always unwrap the `Result` a `try_into_val` / `try_from_val`
-    // returns at the same site, so look through the `unwrap`-family wrappers to
-    // reach the underlying conversion.
-    let expr = peel_unwrap(expr);
-    let kind = val_conv_kind(cx, expr)?;
-
-    let (src_ty, tgt_ty, input_local): (Ty<'tcx>, Ty<'tcx>, HirId) = match (&kind, &expr.kind) {
-        (ValConvKind::IntoVal, hir::ExprKind::MethodCall(_, recv, _, _)) => (
-            cx.typeck_results().expr_ty(recv),
-            cx.typeck_results().expr_ty(expr),
-            peel_to_local(recv)?,
-        ),
-        (ValConvKind::IntoVal, hir::ExprKind::Call(_, args)) => {
-            let src = cx.typeck_results().expr_ty(args.first()?);
-            (
-                src,
-                cx.typeck_results().expr_ty(expr),
-                peel_to_local(args.first()?)?,
-            )
-        }
-        (ValConvKind::TryIntoVal, hir::ExprKind::MethodCall(_, recv, _, _)) => (
-            cx.typeck_results().expr_ty(recv),
-            peel_result(cx, cx.typeck_results().expr_ty(expr)),
-            peel_to_local(recv)?,
-        ),
-        (ValConvKind::TryIntoVal, hir::ExprKind::Call(_, args)) => {
-            let src = cx.typeck_results().expr_ty(args.first()?);
-            (
-                src,
-                peel_result(cx, cx.typeck_results().expr_ty(expr)),
-                peel_to_local(args.first()?)?,
-            )
-        }
-        (ValConvKind::FromVal, hir::ExprKind::Call(_, args)) => {
-            let src = cx.typeck_results().expr_ty(args.get(1)?);
-            (
-                src,
-                cx.typeck_results().expr_ty(expr),
-                peel_to_local(args.get(1)?)?,
-            )
-        }
-        (ValConvKind::TryFromVal, hir::ExprKind::Call(_, args)) => {
-            let src = cx.typeck_results().expr_ty(args.get(1)?);
-            (
-                src,
-                peel_result(cx, cx.typeck_results().expr_ty(expr)),
-                peel_to_local(args.get(1)?)?,
-            )
-        }
-        _ => return None,
-    };
-
-    if !is_val_ty(cx, src_ty) && !is_val_ty(cx, tgt_ty) {
-        return None;
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<rustc_middle::ty::Ty<'tcx>> {
+    if let rustc_middle::ty::TyKind::Adt(adt, args) = ty.kind()
+        && cx.tcx.def_path_str(adt.did()).ends_with("result::Result")
+    {
+        return Some(args.type_at(0));
     }
+    None
+}
 
-    Some(ValConversion {
-        input_local,
-        expr: *expr,
+/// Whether `ty` still mentions a generic parameter or inference variable. Such
+/// types are not concrete: flagging a conversion whose source or target is
+/// generic would produce false positives in generic helpers where the equality
+/// of the two sides is incidental to the instantiation, not a real round trip.
+fn is_generic_or_infer(ty: rustc_middle::ty::Ty<'_>) -> bool {
+    ty.walk().any(|arg| {
+        if let Some(t) = arg.as_type() {
+            matches!(
+                t.kind(),
+                rustc_middle::ty::TyKind::Param(_) | rustc_middle::ty::TyKind::Infer(_)
+            )
+        } else {
+            false
+        }
     })
 }
 
-impl<'tcx> LateLintPass<'tcx> for ValConversionChain {
-    /// Flags a sequence of three or more Val-boundary conversions that all carry
-    /// the same underlying local value, built up across `let` bindings (or a
-    /// tail expression) within a block.
+/// Whether `source` and `dest` denote the same conversion value after peeling
+/// references and ignoring a `Result` wrapper around either side. A conversion
+/// `T -> Result<T, _>` (the `TryFromVal` return shape) is treated as `T -> T`.
+fn types_are_redundant<'tcx>(
+    cx: &LateContext<'tcx>,
+    source: rustc_middle::ty::Ty<'tcx>,
+    dest: rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    let source = source.peel_refs();
+    let dest = dest.peel_refs();
+
+    if is_generic_or_infer(source) || is_generic_or_infer(dest) {
+        return false;
+    }
+
+    if source == dest {
+        return true;
+    }
+
+    if let Some(inner) = result_ok_type(cx, dest)
+        && inner.peel_refs() == source
+    {
+        return true;
+    }
+
+    if let Some(inner) = result_ok_type(cx, source)
+        && inner.peel_refs() == dest
+    {
+        return true;
+    }
+
+    false
+}
+
+/// If `expr` is itself a `Val`-boundary conversion (`into_val`/`try_into_val`
+/// method form, or `from_val`/`try_from_val` function form), returns the *source*
+/// type of that inner conversion — i.e. the original native type before it was
+/// first converted. This is what lets the round-trip check compare the inner
+/// conversion's starting type against the outer conversion's result type.
+fn inner_conversion_source_type<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<rustc_middle::ty::Ty<'tcx>> {
+    let expr = unwrap_borrows(expr);
+    let typeck = cx.typeck_results();
+
+    if let hir::ExprKind::MethodCall(_path, receiver, _args, _span) = expr.kind
+        && let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id)
+        && (match_soroban_def_path(cx, def_id, &["IntoVal", "into_val"])
+            || match_soroban_def_path(cx, def_id, &["TryIntoVal", "try_into_val"]))
+    {
+        return Some(typeck.expr_ty(receiver).peel_refs());
+    } else if let hir::ExprKind::Call(path_expr, args) = expr.kind
+        && let hir::ExprKind::Path(ref qpath) = path_expr.kind
+        && let Some(def_id) = cx.qpath_res(qpath, path_expr.hir_id).opt_def_id()
+        && (match_soroban_def_path(cx, def_id, &["FromVal", "from_val"])
+            || match_soroban_def_path(cx, def_id, &["TryFromVal", "try_from_val"])
+            || match_soroban_def_path(cx, def_id, &["IntoVal", "into_val"])
+            || match_soroban_def_path(cx, def_id, &["TryIntoVal", "try_into_val"]))
+        && args.len() >= 2
+    {
+        return Some(typeck.expr_ty(&args[1]).peel_refs());
+    }
+    None
+}
+
+/// Whether `def_id` resolves to one of the `Val`-boundary conversion methods.
+fn is_val_conversion_def<'tcx>(cx: &LateContext<'tcx>, def_id: DefId) -> bool {
+    match_soroban_def_path(cx, def_id, &["IntoVal", "into_val"])
+        || match_soroban_def_path(cx, def_id, &["TryIntoVal", "try_into_val"])
+        || match_soroban_def_path(cx, def_id, &["FromVal", "from_val"])
+        || match_soroban_def_path(cx, def_id, &["TryFromVal", "try_from_val"])
+}
+
+impl<'tcx> LateLintPass<'tcx> for RedundantValConversion {
+    /// Flags conversions that cross the native-Rust/Val boundary without
+    /// effect: a value converted into the type it already is, or a value
+    /// converted to `Val` and immediately back to its original type.
     ///
-    /// Each hop is identified with [`classify_val_conversion`]; the hops are
-    /// linked by the binding each one consumes, so a chain only forms when the
-    /// *same* value flows untouched from one conversion into the next. The
-    /// threshold is [`VAL_CONVERSION_CHAIN_MIN_HOPS`]. Detection is purely
-    /// structural and type-based, so it is independent of whether the sibling
-    /// `redundant_val_conversion` lint also fires on a given expression.
-    fn check_block(&mut self, cx: &LateContext<'tcx>, block: &'tcx hir::Block<'tcx>) {
-        // Gather every direct `let` whose initializer is a Val-boundary
-        // conversion, plus a tail conversion, keyed by the binding it defines.
-        let mut conversions: HashMap<HirId, ValConversion<'tcx>> = HashMap::new();
-
-        for stmt in block.stmts {
-            if let hir::StmtKind::Let(let_stmt) = stmt.kind
-                && let Some(init) = let_stmt.init
-                && let Some(info) = classify_val_conversion(cx, init)
-                && let hir::PatKind::Binding(_, binding_hir_id, _, _) = let_stmt.pat.kind
-            {
-                conversions.insert(binding_hir_id, info);
-            }
-        }
-
-        if let Some(tail) = block.expr
-            && let Some(info) = classify_val_conversion(cx, tail)
-        {
-            conversions.insert(tail.hir_id, info);
-        }
-
-        if conversions.len() < VAL_CONVERSION_CHAIN_MIN_HOPS {
+    /// Detection matches the conversion method/function by its `soroban_sdk`
+    /// def-path, then compares the *source* and *target* types (peeling
+    /// references and a `Result` wrapper) through `LateContext`. Generic and
+    /// inference-variable types are skipped so the lint never fires on a
+    /// helper whose type parameters merely happen to line up.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if expr.span.from_expansion() {
             return;
         }
 
-        // Parent binding -> the conversion(s) that consume it. A chain runs
-        // from a "start" conversion (whose input is not itself a conversion)
-        // forward through these edges to a leaf.
-        let mut dependents: HashMap<HirId, Vec<HirId>> = HashMap::new();
-        let mut starts: Vec<HirId> = Vec::new();
-        for (&node, info) in &conversions {
-            if conversions.contains_key(&info.input_local) {
-                dependents.entry(info.input_local).or_default().push(node);
-            } else {
-                starts.push(node);
-            }
-        }
+        let typeck = cx.typeck_results();
+        let expr_ty = typeck.expr_ty(expr).peel_refs();
 
-        let mut reported: HashSet<HirId> = HashSet::new();
-        for &start in &starts {
-            let chain = longest_val_chain(start, &dependents, &mut reported);
-            if chain.len() >= VAL_CONVERSION_CHAIN_MIN_HOPS {
-                let leaf = chain[chain.len() - 1];
-                let leaf_expr = conversions[&leaf].expr;
+        // Method-call form: `receiver.into_val(env)` / `receiver.try_into_val(env)`.
+        if let hir::ExprKind::MethodCall(_path, receiver, _args, _span) = expr.kind {
+            if let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id)
+                && is_val_conversion_def(cx, def_id)
+            {
+                let receiver_ty = typeck.expr_ty(receiver).peel_refs();
+
+                // Case 1: converting into the type it already is.
+                // Case 2: the receiver is itself a conversion back from `Val` to
+                // the original type — a round trip. The two are mutually exclusive
+                // via `else if` so a single expression is never reported twice.
+                if types_are_redundant(cx, receiver_ty, expr_ty) {
+                    span_lint_and_help(
+                        cx,
+                        REDUNDANT_VAL_CONVERSION,
+                        expr.span,
+                        "redundant conversion to the same type",
+                        None,
+                        "remove this conversion since the value is already the target type",
+                    );
+                } else if let Some(source_ty) = inner_conversion_source_type(cx, receiver)
+                    && types_are_redundant(cx, source_ty, expr_ty)
+                {
+                    span_lint_and_help(
+                        cx,
+                        REDUNDANT_VAL_CONVERSION,
+                        expr.span,
+                        "redundant round-trip conversion across the Val boundary",
+                        None,
+                        "remove these conversions and use the original value directly",
+                    );
+                }
+            }
+        } else if let hir::ExprKind::Call(path_expr, args) = expr.kind
+            && let hir::ExprKind::Path(ref qpath) = path_expr.kind
+            && let Some(def_id) = cx.qpath_res(qpath, path_expr.hir_id).opt_def_id()
+            && is_val_conversion_def(cx, def_id)
+            && args.len() >= 2
+        {
+            let source_arg = &args[1];
+            let source_ty = typeck.expr_ty(source_arg).peel_refs();
+
+            // Case 1: converting the argument into the type it already is.
+            // Case 2: the argument is itself a conversion back from `Val`. The
+            // two are mutually exclusive via `else if` so a single expression is
+            // never reported twice.
+            if types_are_redundant(cx, source_ty, expr_ty) {
                 span_lint_and_help(
                     cx,
-                    VAL_CONVERSION_CHAIN,
-                    leaf_expr.span,
-                    format!(
-                        "conversion chain through `Val`: {} hops to move one value",
-                        chain.len()
-                    ),
+                    REDUNDANT_VAL_CONVERSION,
+                    expr.span,
+                    "redundant conversion to the same type",
                     None,
-                    "the value is bounced through `Val` and back multiple times; convert it \
-                     directly to the final representation instead of hopping through `Val` at \
-                     each call site — every hop is a metered host call",
+                    "remove this conversion since the value is already the target type",
+                );
+            } else if let Some(inner_source_ty) = inner_conversion_source_type(cx, source_arg)
+                && types_are_redundant(cx, inner_source_ty, expr_ty)
+            {
+                span_lint_and_help(
+                    cx,
+                    REDUNDANT_VAL_CONVERSION,
+                    expr.span,
+                    "redundant round-trip conversion across the Val boundary",
+                    None,
+                    "remove these conversions and use the original value directly",
                 );
             }
         }
     }
-}
-
-/// Returns the longest path of linked Val conversions starting at `node`,
-/// marking every node it visits as `reported` so a chain is only surfaced once.
-fn longest_val_chain(
-    node: HirId,
-    dependents: &HashMap<HirId, Vec<HirId>>,
-    reported: &mut HashSet<HirId>,
-) -> Vec<HirId> {
-    reported.insert(node);
-    let mut best = vec![node];
-    if let Some(children) = dependents.get(&node) {
-        for &child in children {
-            if reported.contains(&child) {
-                continue;
-            }
-            let sub = longest_val_chain(child, dependents, reported);
-            if sub.len() + 1 > best.len() {
-                best = std::iter::once(node).chain(sub).collect();
-            }
-        }
-    }
-    best
 }
 
 // Linux-only. The checked-in `.stderr` fixtures are byte-compared against the
