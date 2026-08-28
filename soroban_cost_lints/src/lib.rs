@@ -555,10 +555,6 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         category: LintCategory::Compute,
     },
     LintMetadata {
-        lint: LOOP_INVARIANT_STORAGE_ACCESS,
-        category: LintCategory::StorageOperations,
-    },
-    LintMetadata {
         lint: SOROBAN_INEFFICIENT_BYTES_CONCAT,
         category: LintCategory::Memory,
     },
@@ -584,6 +580,10 @@ pub const LINT_METADATA: &[LintMetadata] = &[
     },
     LintMetadata {
         lint: STORAGE_WRITE_WITHOUT_READ,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: BLIND_STORAGE_WRITE,
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
@@ -642,6 +642,14 @@ pub const LINT_METADATA: &[LintMetadata] = &[
         lint: STD_COLLECTION_IN_CONTRACT,
         category: LintCategory::Memory,
     },
+    LintMetadata {
+        lint: TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+        category: LintCategory::EntryLifecycle,
+    },
+    LintMetadata {
+        lint: EXCESSIVE_VEC_CAPACITY,
+        category: LintCategory::Memory,
+    },
 ];
 
 /// `dylint` entry point. Registers every lint declared by this crate with
@@ -670,6 +678,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         BYTES_APPEND_IN_LOOP,
         STRING_CONCAT_IN_LOOP,
         STORAGE_WRITE_WITHOUT_READ,
+        BLIND_STORAGE_WRITE,
         STORAGE_KEY_CONSTRUCTION_IN_LOOP,
         MAP_INSERT_IN_LOOP,
         SIGNATURE_VERIFICATION_IN_LOOP,
@@ -684,6 +693,8 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         FORMATTED_PANIC_PAYLOAD,
         UNWRAP_ON_STORAGE_GET,
         STD_COLLECTION_IN_CONTRACT,
+        TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+        EXCESSIVE_VEC_CAPACITY,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
@@ -701,6 +712,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(BytesAppendInLoop));
     lint_store.register_late_pass(|_| Box::new(StringConcatInLoop));
     lint_store.register_late_pass(|_| Box::new(StorageWriteWithoutRead));
+    lint_store.register_late_pass(|_| Box::new(BlindStorageWrite));
     lint_store.register_late_pass(|_| Box::new(StorageKeyConstructionInLoop));
     lint_store.register_late_pass(|_| Box::new(MapInsertInLoop));
     lint_store.register_late_pass(|_| Box::new(SignatureVerificationInLoop));
@@ -714,6 +726,8 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
     lint_store.register_late_pass(|_| Box::new(InstanceStorageForUnboundedData));
     lint_store.register_late_pass(|_| Box::new(UnwrapOnStorageGet));
     lint_store.register_late_pass(|_| Box::new(StdCollectionInContract));
+    lint_store.register_late_pass(|_| Box::new(TemporaryStorageForPersistentData));
+    lint_store.register_late_pass(|_| Box::new(ExcessiveVecCapacity));
 
     // `formatted_panic_payload` needs the AST-level `format_args!` nodes to
     // tell a zero-argument `panic!("literal")` apart from a formatted
@@ -1965,6 +1979,152 @@ impl<'tcx> LateLintPass<'tcx> for StorageWriteWithoutRead {
                 );
             }
         }
+    }
+}
+
+// =======================================================================
+// blind_storage_write — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub BLIND_STORAGE_WRITE,
+    Warn,
+    "storage write that blindly overwrites a previously written key without reading it back"
+}
+
+/// Late pass backing [`BLIND_STORAGE_WRITE`].
+///
+/// Flags `set` calls on storage accessors that overwrite a key which was
+/// already written earlier in the same function body, when the code in between
+/// never read that key's value back. The boundary with
+/// [`STORAGE_WRITE_WITHOUT_READ`] is deliberate: that lint owns the case where a
+/// key is *never* read anywhere in the function (a write whose value is unused),
+/// whereas this lint only fires when the key *is* read somewhere in the
+/// function — so the write is plausibly meaningful — but this particular
+/// overwrite discards a prior `set` without consulting its value. Initialising a
+/// brand-new key with a single `set` (no prior write) is never flagged.
+pub struct BlindStorageWrite;
+rustc_session::impl_lint_pass!(BlindStorageWrite => [BLIND_STORAGE_WRITE]);
+
+const BLIND_WRITE_READ_METHODS: &[&str] = &["get", "try_get", "has", "remove", "update"];
+
+impl<'tcx> LateLintPass<'tcx> for BlindStorageWrite {
+    /// Visits a function body, collecting every storage read, then walks the body
+    /// in source order to emit a diagnostic for every `set` that overwrites a key
+    /// which was already written earlier in the function and was not read back
+    /// since that prior write.
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _: rustc_hir::intravisit::FnKind<'tcx>,
+        _: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _: rustc_span::Span,
+        def_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        let fn_name = cx.tcx.opt_item_name(def_id.to_def_id());
+        if let Some(name) = fn_name {
+            let name_str = name.as_str();
+            if name_str.contains("init") || name_str.contains("set_admin") {
+                return;
+            }
+        }
+
+        // Collect every (receiver, key) pair that is read anywhere in the
+        // function. A read of the key elsewhere is what separates this lint from
+        // `storage_write_without_read`: if the key is never read, that other lint
+        // owns the diagnostic and we stay silent.
+        struct ReadCollector<'a, 'tcx> {
+            cx: &'a LateContext<'tcx>,
+            reads: HashSet<(String, String)>,
+        }
+        impl<'a, 'tcx> Visitor<'tcx> for ReadCollector<'a, 'tcx> {
+            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+                if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = &expr.kind {
+                    let is_storage = if let Some(adt_def) =
+                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
+                    {
+                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                    } else {
+                        false
+                    };
+                    let method = path_segment.ident.name.as_str();
+                    if is_storage && BLIND_WRITE_READ_METHODS.contains(&method) && !args.is_empty()
+                    {
+                        let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                        self.reads.insert((r, k));
+                    }
+                }
+                intravisit::walk_expr(self, expr);
+            }
+        }
+        let mut read_collector = ReadCollector {
+            cx,
+            reads: HashSet::new(),
+        };
+        read_collector.visit_body(body);
+        let read_pairs = read_collector.reads;
+
+        // Walk the body in source order. For each storage `set`, fire only when
+        // the same (receiver, key) pair was already written earlier AND the key
+        // is read somewhere in the function AND no read of that key happened
+        // since the previous write — i.e. the overwrite is "blind".
+        struct BlindWriteVisitor<'a, 'tcx> {
+            cx: &'a LateContext<'tcx>,
+            read_pairs: &'a HashSet<(String, String)>,
+            seen_write: HashSet<(String, String)>,
+            since_read: HashMap<(String, String), bool>,
+        }
+        impl<'a, 'tcx> Visitor<'tcx> for BlindWriteVisitor<'a, 'tcx> {
+            fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+                intravisit::walk_expr(self, expr);
+                if let hir::ExprKind::MethodCall(path_segment, receiver, args, span) = &expr.kind {
+                    let is_storage = if let Some(adt_def) =
+                        ty_adt_def(self.cx.typeck_results().expr_ty(receiver).peel_refs())
+                    {
+                        matches_any_path(self.cx, adt_def.did(), SOROBAN_STORAGE_TYPES)
+                    } else {
+                        false
+                    };
+                    if !is_storage {
+                        return;
+                    }
+                    let method = path_segment.ident.name.as_str();
+                    if BLIND_WRITE_READ_METHODS.contains(&method) && !args.is_empty() {
+                        let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                        self.since_read.insert((r, k), true);
+                    } else if method == "set" && args.len() >= 2 {
+                        let r = snippet_opt(self.cx, receiver.span).unwrap_or_default();
+                        let k = snippet_opt(self.cx, args[0].span).unwrap_or_default();
+                        let pair = (r, k);
+                        let has_prior_write = self.seen_write.contains(&pair);
+                        let has_any_read = self.read_pairs.contains(&pair);
+                        let read_since = *self.since_read.get(&pair).unwrap_or(&false);
+                        if has_prior_write && has_any_read && !read_since {
+                            span_lint_and_help(
+                                self.cx,
+                                BLIND_STORAGE_WRITE,
+                                *span,
+                                "blind storage write overwrites a previously written key without reading it back",
+                                None,
+                                "read the previous value (or guard with `.has()`) before overwriting, otherwise the earlier store is silently discarded",
+                            );
+                        }
+                        self.seen_write.insert(pair.clone());
+                        self.since_read.insert(pair, false);
+                    }
+                }
+            }
+        }
+        let mut visitor = BlindWriteVisitor {
+            cx,
+            read_pairs: &read_pairs,
+            seen_write: HashSet::new(),
+            since_read: HashMap::new(),
+        };
+        visitor.visit_body(body);
     }
 }
 
@@ -3363,6 +3523,275 @@ impl<'tcx> LateLintPass<'tcx> for StdCollectionInContract {
     }
 }
 
+// =======================================================================
+// temporary_storage_for_persistent_data — Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    pub TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+    Warn,
+    "temporary storage write followed by an unsafe read that assumes the value persists"
+}
+/// Concrete pass that fires [`TEMPORARY_STORAGE_FOR_PERSISTENT_DATA`].
+pub struct TemporaryStorageForPersistentData;
+rustc_session::impl_lint_pass!(TemporaryStorageForPersistentData => [TEMPORARY_STORAGE_FOR_PERSISTENT_DATA]);
+
+impl<'tcx> LateLintPass<'tcx> for TemporaryStorageForPersistentData {
+    fn check_fn(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        _kind: intravisit::FnKind<'tcx>,
+        _decl: &'tcx hir::FnDecl<'tcx>,
+        body: &'tcx hir::Body<'tcx>,
+        _span: rustc_span::Span,
+        _hir_id: rustc_hir::def_id::LocalDefId,
+    ) {
+        let mut collector = TempWriteCollector {
+            cx,
+            writes: Vec::new(),
+        };
+        collector.visit_body(body);
+
+        let mut unsafe_reader = TempUnsafeReadDetector {
+            cx,
+            writes: &collector.writes,
+            reported: HashSet::new(),
+        };
+        unsafe_reader.visit_body(body);
+    }
+}
+
+/// Collects temporary storage write calls (`.set()` on `Temporary`) within a
+/// function body, recording the key snippet and span of each write.
+struct TempWriteCollector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    writes: Vec<(String, rustc_span::Span)>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TempWriteCollector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, _receiver, args, _span) = expr.kind
+            && path_segment.ident.name.as_str() == "set"
+            && args.len() >= 2
+            && is_temporary_storage_write(self.cx, expr)
+        {
+            let key_inner = peel_addr_of(&args[0]);
+            if let Some(key_snippet) = snippet_opt(self.cx, key_inner.span) {
+                self.writes.push((key_snippet, expr.span));
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Detects unsafe reads (`.unwrap()` / `.expect()` on `.get()`) of the same
+/// keys previously written to temporary storage in the same function body.
+struct TempUnsafeReadDetector<'a, 'tcx> {
+    cx: &'a LateContext<'tcx>,
+    writes: &'a [(String, rustc_span::Span)],
+    reported: HashSet<rustc_span::Span>,
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for TempUnsafeReadDetector<'a, 'tcx> {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if ((method_name == "unwrap" && args.is_empty())
+                || (method_name == "expect" && args.len() == 1))
+                && let Some(temp_read) = is_temp_get(self.cx, receiver)
+            {
+                let read_key_inner = peel_addr_of(temp_read);
+                if let Some(read_key_snippet) = snippet_opt(self.cx, read_key_inner.span) {
+                    for &(ref write_key, write_span) in self.writes {
+                        if read_key_snippet == *write_key && !self.reported.contains(&write_span) {
+                            self.reported.insert(write_span);
+                            span_lint_and_help(
+                                self.cx,
+                                TEMPORARY_STORAGE_FOR_PERSISTENT_DATA,
+                                expr.span,
+                                "unsafe read from temporary storage after a write — temporary \
+                                 entries are permanently deleted when their TTL expires, so \
+                                 this read will panic if the value has expired",
+                                None,
+                                "handle the None case with match, unwrap_or, or \
+                                 unwrap_or_else; or use persistent storage if the data must \
+                                 survive across ledger closes",
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        intravisit::walk_expr(self, expr);
+    }
+}
+
+/// Checks whether `expr` is a `set()` call on a `Temporary` storage receiver.
+fn is_temporary_storage_write<'tcx>(cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) -> bool {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, _, _) = expr.kind {
+        let method_name = path_segment.ident.name.as_str();
+        if method_name != "set" {
+            return false;
+        }
+        let receiver_ty = cx.typeck_results().expr_ty(receiver);
+        let peeled = receiver_ty.peel_refs();
+        if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind() {
+            match_soroban_def_path(cx, adt_def.did(), &["soroban_sdk", "storage", "Temporary"])
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+/// Checks whether `expr` is a `get()` call on a `Temporary` storage receiver.
+/// Returns `Some(key_expr)` if so.
+fn is_temp_get<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx hir::Expr<'tcx>,
+) -> Option<&'tcx hir::Expr<'tcx>> {
+    if let hir::ExprKind::MethodCall(path_segment, receiver, args, _) = expr.kind {
+        let method_name = path_segment.ident.name.as_str();
+        if method_name == "get" && !args.is_empty() {
+            let receiver_ty = cx.typeck_results().expr_ty(receiver);
+            let peeled = receiver_ty.peel_refs();
+            if let rustc_middle::ty::Adt(adt_def, _) = peeled.kind()
+                && match_soroban_def_path(
+                    cx,
+                    adt_def.did(),
+                    &["soroban_sdk", "storage", "Temporary"],
+                )
+            {
+                return Some(&args[0]);
+            }
+        }
+    }
+    None
+}
+
+/// Strips any number of leading `AddrOf` wrappers, returning the innermost
+/// expression.  Handles `&key`, `&&key`, etc.
+fn peel_addr_of<'tcx>(mut expr: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    while let hir::ExprKind::AddrOf(_, _, inner) = expr.kind {
+        expr = inner;
+    }
+    expr
+}
+// =======================================================================
+// excessive_vec_capacity — Lint
+// =======================================================================
+
+/// Pre-allocation threshold (in number of elements). Soroban contracts run
+/// inside a WASM linear-memory sandbox with a per-transaction memory cap.
+/// Excessive pre-allocation wastes host memory and inflates the metered cost
+/// of the allocation without providing a meaningful performance benefit for
+/// typical Soroban workloads.
+///
+/// **Rationale for 4 096:** Soroban's Host-backed Vec meters each element
+/// individually. A 4 096-element pre-allocation for a4-byte element type
+/// (e.g. `i32`) reserves roughly 16 KB of linear memory — generous for
+/// known-bound workloads while remaining well within the per-transaction
+/// memory cap. Values above this threshold are almost certainly over-
+/// estimated and should be revisited. Smaller capacities (<=4 096) are
+/// common for fixed-size buffers, lookup tables, and small batch
+/// processing, and are not flagged.
+const EXCESSIVE_VEC_CAPACITY_THRESHOLD: u128 = 4_096;
+
+// Flags Soroban `Vec::with_capacity(n)` and `.reserve(n)` calls where the
+// capacity argument is a hard-coded literal exceeding a defensible threshold.
+//
+// Only `soroban_sdk::vec::Vec` is targeted — ordinary host-side
+// `std::vec::Vec` helper code is not flagged. Runtime-derived capacities
+// (variables, function calls, arithmetic expressions) are intentionally
+// ignored because the lint cannot determine their value statically.
+rustc_session::declare_lint! {
+    pub EXCESSIVE_VEC_CAPACITY,
+    Warn,
+    "excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve"
+}
+/// Concrete pass that fires [`EXCESSIVE_VEC_CAPACITY`].
+pub struct ExcessiveVecCapacity;
+rustc_session::impl_lint_pass!(ExcessiveVecCapacity => [EXCESSIVE_VEC_CAPACITY]);
+
+impl<'tcx> LateLintPass<'tcx> for ExcessiveVecCapacity {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        match expr.kind {
+            // Vec::with_capacity(n) — static associated function call.
+            hir::ExprKind::Call(callee, args) if !args.is_empty() => {
+                let callee_ty = cx.typeck_results().expr_ty(callee);
+                if let rustc_middle::ty::FnDef(callee_did, _) = callee_ty.kind() {
+                    let method_name_sym = cx.tcx.item_name(*callee_did);
+                    let method_name = method_name_sym.as_str();
+                    if method_name == "with_capacity" {
+                        let callee_path = cached_def_path_str(cx.tcx, *callee_did);
+                        if is_soroban_vec_def_path(&callee_path) && exceeds_threshold(&args[0]) {
+                            span_lint_and_sugg(
+                                cx,
+                                EXCESSIVE_VEC_CAPACITY,
+                                expr.span,
+                                "excessive pre-allocation capacity in Soroban Vec",
+                                "reduce the capacity",
+                                "Vec::new()".to_string(),
+                                Applicability::MaybeIncorrect,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // vec.reserve(n) — instance method call.
+            hir::ExprKind::MethodCall(path_segment, receiver, args, _) if !args.is_empty() => {
+                let method_name = path_segment.ident.name.as_str();
+                if method_name == "reserve" {
+                    let receiver_ty = cx.typeck_results().expr_ty(receiver);
+                    if let rustc_middle::ty::Adt(adt_def, _) = receiver_ty.kind()
+                        && is_soroban_vec_adt(cx, adt_def.did())
+                        && exceeds_threshold(&args[0])
+                    {
+                        span_lint_and_help(
+                            cx,
+                            EXCESSIVE_VEC_CAPACITY,
+                            expr.span,
+                            "excessive pre-allocation capacity in Soroban Vec",
+                            None,
+                            "consider reducing the reserve amount or using Vec::new()",
+                        );
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+}
+
+/// Returns `true` if `callee_path` ends with `soroban_sdk::vec::Vec`.
+fn is_soroban_vec_def_path(callee_path: &str) -> bool {
+    callee_path.contains("soroban_sdk::vec::Vec")
+}
+
+/// Returns `true` if `def_id` belongs to `soroban_sdk::vec::Vec`.
+fn is_soroban_vec_adt<'tcx>(cx: &LateContext<'tcx>, def_id: DefId) -> bool {
+    match_soroban_def_path(cx, def_id, &["soroban_sdk", "vec", "Vec"])
+}
+
+/// Returns `true` if `expr` is a numeric literal whose value exceeds
+/// [`EXCESSIVE_VEC_CAPACITY_THRESHOLD`]. Handles both `LitKind::Int` and
+/// negative literals.
+fn exceeds_threshold<'tcx>(expr: &'tcx hir::Expr<'tcx>) -> bool {
+    match expr.kind {
+        hir::ExprKind::Lit(lit) => match lit.node {
+            LitKind::Int(val, _) => val > EXCESSIVE_VEC_CAPACITY_THRESHOLD,
+            _ => false,
+        },
+        // Handle unary negation: -1_000_000
+        hir::ExprKind::Unary(hir::UnOp::Neg, inner) => matches!(inner.kind,
+            hir::ExprKind::Lit(lit) if matches!(lit.node, LitKind::Int(val, _) if val > EXCESSIVE_VEC_CAPACITY_THRESHOLD)
+        ),
+        _ => false,
+    }
+}
 // on Unix versus `ui\x.rs` on Windows -- so a single set of fixtures cannot
 // satisfy both. This never surfaced before because the Windows job failed at
 // checkout and never reached the test step.

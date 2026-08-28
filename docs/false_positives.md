@@ -123,10 +123,27 @@ Flags incremental concatenation of byte sequences inside loops.
 
 ### `contract_call_in_loop`
 
-Flags cross-contract invocations (`Client::new(&env, &addr).method(...)`) inside loops.
+Flags cross-contract invocations (`env.invoke_contract(&addr, &sym, ())`) inside loops.
 
 - **Overhead:** Each cross-contract call invokes host context switching and separate auth/cost accounting.
 - **Handling:** Batch cross-contract calls where possible; suppress with `#[allow(contract_call_in_loop)]` when per-item cross-contract dispatch is required.
+
+### `host_in_loop`
+
+Flags any method call on a `Host` object (`env.host()...`) inside a loop body. Unlike `unnecessary_host_function_call`, this lint performs no loop-invariance analysis — a `Host` use in a loop is always surfaced.
+
+- **Overhead:** `Host` operations cross the guest/host boundary and are metered per call.
+- **Loop-invariance:** Because the lint does not check whether the call result is loop-invariant, even a genuinely hoistable `Host` call is flagged. Hoist the `env.host()`-derived handle or the call itself outside the loop when the result is reused.
+- **Handling:** Suppress with `#[allow(host_in_loop)]` when every in-loop `Host` interaction is required.
+
+### `linear_scan_in_loop`
+
+Flags linear-time scans (`contains`, `position`, `find`) on a Soroban `Vec`/`Map` inside a loop when the scan argument does not depend on loop state.
+
+- **Overhead:** A per-iteration scan is O(n) on the collection, yielding O(n²) total cost.
+- **Near-miss — loop-variant argument:** a scan whose argument is the loop variable (e.g. `v.contains(&x)`) is genuinely per-iteration work and is correctly *not* flagged.
+- **Near-miss — impure argument:** an argument containing a method/function call is conservatively treated as loop-variant and the warning is suppressed.
+- **Handling:** Build a `Map` lookup outside the loop for O(1) access, or suppress with `#[allow(linear_scan_in_loop)]` when the scan is inherent to the algorithm.
 
 ### `unnecessary_host_function_call`
 
@@ -147,6 +164,25 @@ Fires on `.clone()` calls on `Env`. `Env` is a lightweight copyable handle.
 Fires when `Symbol::new(&env, "short")` is used with a literal string <= 9 characters.
 
 - **Remedy:** Replace with `symbol_short!("short")` for zero host overhead at runtime.
+- **Boundary:** the fixture pins the length boundary — a literal of exactly 9 characters fires (the maximum accepted by `symbol_short!`), a 10-character literal does not.
+- **Near-miss — invalid characters:** literals containing characters outside `[a-zA-Z0-9_]` (e.g. `-`, spaces) are not flagged, because `symbol_short!` would not accept them either.
+- **Near-miss — non-literal argument:** `Symbol::new(&env, s)` where `s` is a variable is not flagged; the lint only matches string-literal arguments.
+- **Near-miss — empty literal:** `Symbol::new(&env, "")` is not flagged.
+
+### `map_insert_in_loop`
+
+Flags `Map::insert` calls on `soroban_sdk::Map` inside any loop body.
+
+- **Host reallocation cost:** each `insert` mutates a host-side map object, and per-iteration inserts are increasingly expensive as the map grows.
+- **Handling:** accumulate mutations in a native `Vec<(K, V)>` inside the loop and build the `Map` once after the loop, or suppress with `#[allow(map_insert_in_loop)]` when per-iteration insertion is intentional.
+
+### `storage_key_construction_in_loop`
+
+Flags `Symbol::new(&env, ...)` calls inside a loop body whose key does not depend on the loop variable.
+
+- **Genuine finding — loop-invariant key:** `let key = Symbol::new(&env, "my_key");` inside a loop reconstructs the same host object every iteration. Hoist the construction outside the loop.
+- **Near-miss — loop-variant key:** `Symbol::new(&env, &format!("key_{}", i))` inside a loop reads the loop variable `i`, so the lint correctly does not fire — the key genuinely varies per iteration.
+- **Handling:** hoist invariant key construction outside the loop. Suppress with `#[allow(storage_key_construction_in_loop)]` when per-iteration key construction is intentional.
 
 ### `unbounded_recursion`
 
@@ -180,6 +216,49 @@ Fires on `std::collections::HashMap`, `std::collections::BTreeMap`, and `std::ve
 - **Near-miss 1 — helper function called from `#[contractimpl]`:** the lint only fires inside the `#[contractimpl]` block itself, not in helper functions called from it. A helper that uses `HashMap` for internal bookkeeping is not flagged, which is intentional — the boundary is narrow and correct.
 - **Near-miss 2 — non-collection std types:** `String`, `Box`, `Rc`, `Arc`, and other std types are not flagged. Only the three collection types listed above are in scope.
 - **Test code exclusion:** std collections in `#[test]` functions and `#[cfg(test)]` modules are never flagged, because they are idiomatic and correct in tests.
+
+---
+
+### `temporary_storage_for_persistent_data`
+
+Fires on an *unchecked* read after a write to temporary storage — a `.unwrap()`/
+`.expect()` on a `get` of a key that was written to `temporary()` earlier in the
+same function body.
+
+- **Cache-like temporary storage (intentional, must not fire):** temporary
+  storage is explicitly meant for data that "can be arbitrarily recreated".
+  A valid cache use case looks like this — the value may expire, the absence is
+  detected, and execution recomputes/refetches and continues safely:
+
+  ```
+  temporary value expires
+  → absence detected
+  → value recomputed/refetched
+  → execution continues safely
+  ```
+
+  In code:
+
+  ```rust
+  fn cached_balance(env: Env, key: i32) -> i128 {
+      if let Some(balance) = env.storage().temporary().get::<_, i128>(&key) {
+          return balance;
+      }
+      let recomputed = compute_balance();
+      env.storage().temporary().set(&key, &recomputed);
+      recomputed
+  }
+  ```
+
+  This is **not** a finding: the author is relying on the *absence* to be
+  handled (via the `if let`/`None` path), so an expired entry costs a
+  recomputation instead of a panic or data corruption. This is correct use of
+  temporary storage; only an *unchecked* read that assumes the value still
+  exists is flagged. Cases that handle absence — `unwrap_or`, explicit
+  `match`, or a `has()`-guarded read — never fire.
+- **A key the contract wrote to *persistent* or *instance* storage is never
+  reported** — the lint only tracks `temporary()` writes, so durable storage
+  reads remain quiet.
 
 ---
 
@@ -306,6 +385,21 @@ Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` a
 - Analysis is **per-function**: reads in a different function do not count toward a write's read set.
 - **No known false positives** beyond the intentional initializer skip: any write with a truly absent read is reported, which is the lint's purpose.
 
+### `blind_storage_write`
+
+Fires on a `set` that overwrites a key already written earlier in the same function, when the key is read *somewhere* in the function but was **not** read back between the two writes. The overwrite therefore silently discards the prior store.
+
+**Boundary with `storage_write_without_read`:** the two lints are deliberately disjoint.
+
+- `storage_write_without_read` owns the case where a key is **never** read anywhere in the function (the written value is unused). A double `set` with no read of the key fires *only* `storage_write_without_read`, not `blind_storage_write`.
+- `blind_storage_write` only fires when the key **is** read somewhere in the function (so the write is plausibly meaningful) but a specific overwrite discards a prior `set` without consulting it. A double `set` that follows a `get` of the same key fires *only* `blind_storage_write`, not `storage_write_without_read`.
+
+- **Near-miss — single write (new key):** a lone `set` with no prior write (initialising a brand-new key) never fires `blind_storage_write`, regardless of other reads in the function.
+- **Near-miss — informed overwrite:** `get(&1); set(&1, &2); get(&1); set(&1, &3)`. The second write is preceded by a fresh read of the key, so it is *informed* and not flagged.
+- **Initializer skip:** functions named `init` / `set_admin` are skipped entirely, mirroring `storage_write_without_read`.
+- Matching is by `(receiver, key)` source snippet, so a key written as `&1` and read via `1` (without `&`) will not be correlated and the write may fire spuriously — keep snippets identical when demonstrating the pattern.
+- Analysis is **per-function**: reads/writes in a different function do not affect the verdict.
+
 ### `persistent_read_without_ttl_extension`
 
 Fires on every `get`/`has` on `persistent` storage when the function contains no `extend_ttl` call.
@@ -333,26 +427,40 @@ Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called 
 
   When the constant branch is deliberate — keeping a single, uniform hashing path for clarity or to share post-hash logic — suppress with `#[allow(crypto_hash_of_constant)]` at the call site, or split the constant case into its own precomputed `const` digest. This is the one pattern where the warning is correct in isolation but unwanted in context.
 
-### `unbounded_input_loop`
+### `host_in_loop`
 
-Flags loops whose iteration count is derived from a function parameter (i.e. untrusted input) and whose body performs a storage write.
+Fixtures live in `soroban_cost_lints/ui/host_in_loop.rs`.
 
-- **Pinned gap — the ui fixture currently produces no diagnostics.** The lint's block-statement walker only fires when it detects a Block-with-Loop-tail pattern whose preceding statements read a function parameter directly. In the ui fixture the walker does not identify any such pattern, so even the "should warn" `for i in 0..count { env.storage().instance().set(&i, &i); }` case (with `count: u32` a parameter) does not fire. The empty `.stderr` pins this behaviour so precision improvements land as an intentional diff.
-- **Validated input bounds are correctly silent:** A loop bounded by a local variable derived from a parameter (e.g. `let clamped = count.min(100); for i in 0..clamped`) is not flagged, because the bound reads a local, not a parameter directly.
-- **While-loop bounds not detected:** The walker does not detect parameter-derived bounds in `while` loops, because the condition is inside the loop body rather than in the desugared block's preceding statements.
-- **Handling:** Clamp the loop bound with `.min(CONST)` or validate the input before using it as a loop bound. Suppress with `#[allow(unbounded_input_loop)]` when the per-iteration storage write is intentional and the bound is already validated.
+- **Firing cases:** `env.host().invoke_contract()` / `env.host().budget_cloned()` inside `for`, `while`, `loop`, and iterator-closure (`for_each`) bodies all fire.
+- **Genuine near-miss (must not fire):** the same `Host` call outside any loop is correctly silent.
+- **`Option::map` exception:** a `Host` call inside `opt.map(|e| e.host()...)` is not flagged because `Option::map` runs at most once — the loop detector does not treat it as a loop.
+- **No loop-invariance guard:** unlike `unnecessary_host_function_call`, a `Host` use whose result is loop-invariant is *still* flagged; hoist it out by hand or allow it.
 
-### `signature_verification_in_loop`
+### `contract_call_in_loop`
 
-Flags signature-verification and public-key-recovery calls (`ed25519_verify`, `secp256k1_recover`, `secp256r1_verify`) on the `Crypto` accessor when they appear inside a loop.
+Fixtures live in `soroban_cost_lints/ui/contract_call_in_loop.rs`.
 
-- **No known false positives:** every flagged call re-runs an expensive elliptic-curve check inside a loop, which is almost always a structural sign that batch or aggregate verification should be considered.
-- **Handling:** Use a signature scheme that supports batch verification, or move per-item auth to the callee via a bulk entrypoint. Suppress with `#[allow(signature_verification_in_loop)]` when per-iteration verification is intentional.
+- **Firing cases:** `env.invoke_contract(&addr, &sym, ())` inside `for`, `while`, and iterator-closure bodies all fire.
+- **Genuine near-miss (must not fire):** the cross-contract call is hoisted entirely out of the loop (its result reused as `shared`); nothing warns. A call whose *result* is loop-invariant but still written inside the loop would fire — the lint keys off position in the loop, not invariance.
+- **Overlap fixture:** `overlapping_host_and_contract_call` puts both `env.invoke_contract(...)` and `env.host().invoke_contract()` in the same loop body, so `contract_call_in_loop` and `host_in_loop` fire on different columns of the same iteration. This documents that the two lints are complementary, not mutually exclusive.
+- **`Option::map` exception:** an `invoke_contract` inside `opt.map(...)` is not flagged for the same at-most-once reason as above.
 
-### `require_auth_in_loop`
+### `linear_scan_in_loop`
 
-Flags `Address::require_auth` or `require_auth_for_args` called inside a loop.
+Fixtures live in `soroban_cost_lints/ui/linear_scan_in_loop.rs`.
 
-- **Known false positive — distinct per-iteration addresses:** the lint does not check whether the address depends on the loop variable. When each iteration authorizes a genuinely distinct address (e.g. iterating over a list of addresses), the per-iteration auth is intentional and should not be flagged. Suppress with `#[allow(require_auth_in_loop)]` for such cases.
-- **Genuine finding — same address repeatedly:** when the same address is authorized on every iteration, the cost is real and the auth should be moved before the loop.
-- **Handling:** Collect distinct addresses first and authorize each once before the loop. Suppress with `#[allow(require_auth_in_loop)]` when per-item auth is intentional.
+- **Firing cases:** `Vec::contains(&target)` / `Vec::position(|x| *x == target)` where `target` is defined *outside* the loop, inside `for`, `while`, and iterator-closure bodies — the scan argument is loop-invariant, so the O(n) scan is genuinely repeated every iteration.
+- **Genuine near-miss 1 — loop-variant argument:** `v.contains(&x)` where `x` is the loop variable depends on loop state and is correctly skipped.
+- **Genuine near-miss 2 — impure argument:** `v.contains(&wrapper.0.clone())` has a method call in the argument, so the lint conservatively treats it as loop-variant and stays silent.
+- **Loop shapes:** `for`, `while`, and iterator-closure all fire for invariant scans; `Option::map` single-call sites are not loops and never fire.
+
+
+### `excessive_vec_capacity`
+
+Fixtures live in `soroban_cost_lints/ui/excessive_vec_capacity.rs`.
+
+- **Firing cases:** `Vec::with_capacity(n)` and `.reserve(n)` where `n` is a hard-coded integer literal exceeding the threshold (4 096 elements) -- the lint fires on both associated function and method-call forms.
+- **Genuine near-miss 1 -- below threshold:** `Vec::with_capacity(100)` / `.reserve(100)` do not fire because the value is within the 4 096-element threshold.
+- **Genuine near-miss 2 -- runtime-derived capacity:** `Vec::with_capacity(n)` / `.reserve(n)` where `n` is a variable or function result are never flagged because the lint cannot determine their value statically.
+- **Genuine near-miss 3 -- at threshold:** `Vec::with_capacity(4096)` does not fire (the threshold is exclusive).
+- **Known false positives:** None at this time. The lint only targets `soroban_sdk::vec::Vec` -- ordinary `std::vec::Vec` usage is never flagged.

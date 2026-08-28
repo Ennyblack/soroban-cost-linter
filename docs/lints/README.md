@@ -16,6 +16,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`loop_invariant_storage_access`](loop_invariant_storage_access.md) | `warn` | storage operation inside a loop whose operands are provably loop-invariant |
 | [`soroban_redundant_storage_read`](soroban_redundant_storage_read.md) | `warn` | multiple sequential reads of the same storage key without modification |
 | [`storage_write_without_read`](storage_write_without_read.md) | `warn` | storage write without a corresponding read |
+| [`blind_storage_write`](blind_storage_write.md) | `warn` | storage write that blindly overwrites a previously written key without reading it back |
 | [`instance_storage_for_unbounded_data`](instance_storage_for_unbounded_data.md) | `warn` | unbounded collection written to instance storage |
 | [`unwrap_on_storage_get`](unwrap_on_storage_get.md) | `warn` | unwrap or expect directly on a storage read — panics on a missing or expired key |
 
@@ -49,6 +50,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`storage_key_construction_in_loop`](storage_key_construction_in_loop.md) | `warn` | storage key constructed inside a loop body where it could be hoisted |
 | [`vec_where_slice_could_be_used`](vec_where_slice_could_be_used.md) | `warn` | soroban_sdk::Vec passed by value where a native Rust slice would suffice |
 | [`std_collection_in_contract`](std_collection_in_contract.md) | `warn` | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec |
+| [`excessive_vec_capacity`](excessive_vec_capacity.md) | `warn` | excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve |
 
 ## Entry Lifecycle
 
@@ -56,6 +58,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | --- | --- | --- |
 | [`extend_ttl_in_loop`](extend_ttl_in_loop.md) | `warn` | extend_ttl called inside a loop |
 | [`persistent_read_without_ttl_extension`](persistent_read_without_ttl_extension.md) | `warn` | persistent storage read without TTL extension — archival cost cliff |
+| [`temporary_storage_for_persistent_data`](temporary_storage_for_persistent_data.md) | `warn` | temporary storage write followed by an unsafe read that assumes the value persists |
 
 ## Symbol Operations
 
