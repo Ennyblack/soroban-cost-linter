@@ -337,8 +337,9 @@ Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called 
 
 Flags loops whose iteration count is derived from a function parameter (i.e. untrusted input) and whose body performs a storage write.
 
-- **Direct parameter reads only:** The lint detects parameter reads in the desugared range expression of `for` loops. A loop bounded by a local variable that was derived from a parameter (e.g. `let clamped = count.min(100); for i in 0..clamped`) is correctly NOT flagged, because the bound expression reads a local, not a parameter directly. This is the expected behavior for validated input bounds.
-- **While-loop bounds not detected:** The lint's block-statement walker does not currently detect parameter-derived bounds in `while` loops, because the condition is inside the loop body rather than in the desugared block's preceding statements. Only `for`-loop range expressions are checked.
+- **Pinned gap — the ui fixture currently produces no diagnostics.** The lint's block-statement walker only fires when it detects a Block-with-Loop-tail pattern whose preceding statements read a function parameter directly. In the ui fixture the walker does not identify any such pattern, so even the "should warn" `for i in 0..count { env.storage().instance().set(&i, &i); }` case (with `count: u32` a parameter) does not fire. The empty `.stderr` pins this behaviour so precision improvements land as an intentional diff.
+- **Validated input bounds are correctly silent:** A loop bounded by a local variable derived from a parameter (e.g. `let clamped = count.min(100); for i in 0..clamped`) is not flagged, because the bound reads a local, not a parameter directly.
+- **While-loop bounds not detected:** The walker does not detect parameter-derived bounds in `while` loops, because the condition is inside the loop body rather than in the desugared block's preceding statements.
 - **Handling:** Clamp the loop bound with `.min(CONST)` or validate the input before using it as a loop bound. Suppress with `#[allow(unbounded_input_loop)]` when the per-iteration storage write is intentional and the bound is already validated.
 
 ### `signature_verification_in_loop`
