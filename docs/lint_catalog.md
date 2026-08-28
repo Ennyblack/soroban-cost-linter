@@ -9,6 +9,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | Lint | Default Severity | Description | Docs |
 |------|------------------|-------------|------|
 | `soroban_storage_in_loop` | warn | storage operations inside a loop | [Link](lints/soroban_storage_in_loop.md) |
+| `nested_loop_storage_access` | deny | storage operation inside a nested loop — O(n·m) cost | [Link](lints/nested_loop_storage_access.md) |
 | `loop_invariant_storage_access` | warn | storage operation inside a loop whose operands are provably loop-invariant | [Link](lints/loop_invariant_storage_access.md) |
 | `soroban_inefficient_bytes_concat` | warn | inefficient Bytes concatenation inside a loop | [Link](lints/soroban_inefficient_bytes_concat.md) |
 | `soroban_redundant_storage_read` | warn | multiple sequential reads of the same storage key without modification | [Link](lints/soroban_redundant_storage_read.md) |
@@ -17,10 +18,13 @@ This document provides a concise reference for all lints supported by **soroban-
 | `host_in_loop` | warn | use of Host object inside a loop | [Link](lints/host_in_loop.md) |
 | `unnecessary_string_to_bytes` | warn | unnecessary String to Bytes conversion | [Link](lints/unnecessary_string_to_bytes.md) |
 | `contract_call_in_loop` | warn | cross-contract invocation inside a loop | [Link](lints/contract_call_in_loop.md) |
+| `token_transfer_in_loop` | warn | token transfer (transfer / transfer_from) on a contract client inside a loop | [Link](lints/token_transfer_in_loop.md) |
 | `symbol_new_for_short_literal` | warn | Symbol::new used with a short literal that could use symbol_short! macro | [Link](lints/symbol_new_for_short_literal.md) |
 | `unbounded_input_loop` | warn | loop bound derived from untrusted input with storage write in body | [Link](lints/unbounded_input_loop.md) |
 | `bytes_append_in_loop` | warn | repeatedly growing SDK containers inside loops | [Link](lints/bytes_append_in_loop.md) |
+| `string_concat_in_loop` | warn | repeatedly concatenating a soroban String inside a loop | [Link](lints/string_concat_in_loop.md) |
 | `storage_write_without_read` | warn | storage write without a corresponding read | [Link](lints/storage_write_without_read.md) |
+| `blind_storage_write` | warn | storage write that blindly overwrites a previously written key without reading it back | [Link](lints/blind_storage_write.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `map_insert_in_loop` | warn | Map::insert called inside a loop | [Link](lints/map_insert_in_loop.md) |
 | `signature_verification_in_loop` | warn | signature verification performed inside a loop | [Link](lints/signature_verification_in_loop.md) |
@@ -34,6 +38,10 @@ This document provides a concise reference for all lints supported by **soroban-
 | `instance_storage_for_unbounded_data` | warn | unbounded collection written to instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |
 | `formatted_panic_payload` | warn | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract | [Link](lints/formatted_panic_payload.md) |
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
+| `redundant_val_conversion` | warn | redundant conversion across the native-Rust/Val boundary | [Link](lints/redundant_val_conversion.md) |
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
+| `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
+| `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |
+| `excessive_vec_capacity` | warn | excessive pre-allocation capacity in Soroban Vec::with_capacity or .reserve | [Link](lints/excessive_vec_capacity.md) |
 
 *Severities can be overridden via `budget.toml`.*

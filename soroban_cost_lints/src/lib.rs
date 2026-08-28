@@ -576,3 +576,57 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut rustc_lint
         ],
     );
 }
+
+
+// =======================================================================
+// collection_len_in_loop_condition - Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    /// ### What it does
+    /// Detects `.len()` calls on Soroban collections inside a `while` loop condition
+    /// when the collection is not mutated within the loop.
+    pub COLLECTION_LEN_IN_LOOP_CONDITION,
+    Warn,
+    "collection len() called in a loop condition without mutation"
+}
+
+pub struct CollectionLenInLoopCondition;
+rustc_session::impl_lint_pass!(CollectionLenInLoopCondition => [COLLECTION_LEN_IN_LOOP_CONDITION]);
+
+impl<'tcx> LateLintPass<'tcx> for CollectionLenInLoopCondition {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            if path_segment.ident.name.as_str() == "len" {
+                let receiver_ty = cx.typeck_results().expr_ty(receiver);
+                let peeled_ty = receiver_ty.peel_refs();
+                
+                if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                    let did = adt_def.did();
+                    
+                    if match_soroban_def_path(cx, did, &["soroban_sdk", "vec", "Vec"]) ||
+                       match_soroban_def_path(cx, did, &["soroban_sdk", "map", "Map"]) ||
+                       match_soroban_def_path(cx, did, &["soroban_sdk", "bytes", "Bytes"]) ||
+                       match_soroban_def_path(cx, did, &["soroban_sdk", "string", "String"]) 
+                    {
+                        if let Some(loop_expr) = enclosing_loop(cx, expr) {
+                            if let hir::ExprKind::Loop(_block, _label, hir::LoopSource::While, _) = loop_expr.kind {
+                                if !depends_on_loop_state(cx, loop_expr, expr) {
+                                    clippy_utils::diagnostics::span_lint_and_help(
+                                        cx,
+                                        COLLECTION_LEN_IN_LOOP_CONDITION,
+                                        expr.span,
+                                        "collection len() called in a loop condition without mutation",
+                                        None,
+                                        "hoist/bind the collection's length into a local variable before the loop starts, and compare against that local in the while condition instead of calling .len() each iteration.",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
