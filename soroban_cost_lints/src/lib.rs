@@ -102,6 +102,7 @@ use rustc_lint::{EarlyContext, EarlyLintPass, LateContext, LateLintPass, LintSto
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::DesugaringKind;
 use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_span::sym;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -432,7 +433,8 @@ fn depends_on_loop_state<'tcx>(
                 }
                 _ => {}
             }
-            rustc_hir::intravisit::walk_expr(self, ex);
+            println!("Found ex: {:?}", ex.kind);
+        rustc_hir::intravisit::walk_expr(self, ex);
         }
     }
     // We only check the arguments for impurity, because the call itself is a MethodCall.
@@ -520,6 +522,10 @@ pub struct LintMetadata {
 pub const LINT_METADATA: &[LintMetadata] = &[
     LintMetadata {
         lint: SOROBAN_STORAGE_IN_LOOP,
+        category: LintCategory::StorageOperations,
+    },
+    LintMetadata {
+        lint: NESTED_LOOP_STORAGE_ACCESS,
         category: LintCategory::StorageOperations,
     },
     LintMetadata {
@@ -663,6 +669,7 @@ pub const LINT_METADATA: &[LintMetadata] = &[
 pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore) {
     lint_store.register_lints(&[
         SOROBAN_STORAGE_IN_LOOP,
+        NESTED_LOOP_STORAGE_ACCESS,
         SOROBAN_REDUNDANT_STORAGE_READ,
         REDUNDANT_ENV_CLONE,
         UNNECESSARY_HOST_FUNCTION_CALL,
@@ -697,6 +704,7 @@ pub fn register_lints(_sess: &rustc_session::Session, lint_store: &mut LintStore
         EXCESSIVE_VEC_CAPACITY,
     ]);
     lint_store.register_late_pass(|_| Box::new(SorobanStorageInLoop));
+    lint_store.register_late_pass(|_| Box::new(NestedLoopStorageAccess));
     lint_store.register_late_pass(|_| Box::new(SorobanRedundantStorageRead));
     lint_store.register_late_pass(|_| Box::new(RedundantEnvClone));
     lint_store.register_late_pass(|_| Box::new(UnnecessaryHostFunctionCall));
@@ -833,6 +841,124 @@ impl<'tcx> LateLintPass<'tcx> for SorobanStorageInLoop {
                     "move storage operations out of the loop or accumulate mutations in memory first",
                 );
             }
+        }
+    }
+}
+
+// =======================================================================
+// nested_loop_storage_access — Lint
+// =======================================================================
+
+// Flags storage operations at nesting depth >= 2. A single loop with a
+// storage op is already caught by `soroban_storage_in_loop`; this lint
+// separates the quadratic case (nested loops) so it can carry a stronger
+// message and a different default severity. Depth is computed correctly
+// across for, while, loop, and iterator-closure bodies. A closure body
+// inside a loop is still inside the loop; a loop inside a nested function
+// definition is not.
+rustc_session::declare_lint! {
+    pub NESTED_LOOP_STORAGE_ACCESS,
+    Deny,
+    "storage operation inside a nested loop — O(n·m) cost"
+}
+/// Concrete pass that fires [`NESTED_LOOP_STORAGE_ACCESS`].
+pub struct NestedLoopStorageAccess;
+rustc_session::impl_lint_pass!(NestedLoopStorageAccess => [NESTED_LOOP_STORAGE_ACCESS]);
+
+/// Visitor that computes the loop nesting depth of a target expression by
+/// walking the HIR tree. Increments the counter for `for`, `while`, and
+/// `loop` constructs. Closures are **not** counted as additional nesting —
+/// a closure body inside a loop is still inside the same loop. The visitor
+/// stops at function definitions (`fn`, closures) since a nested function
+/// may be called from anywhere.
+struct LoopDepthVisitor {
+    target: HirId,
+    depth: u32,
+    found: bool,
+}
+
+impl<'tcx> Visitor<'tcx> for LoopDepthVisitor {
+    fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
+        if self.found {
+            return;
+        }
+
+        match expr.kind {
+            hir::ExprKind::Loop(body, _, _, _) => {
+                self.depth += 1;
+                self.visit_block(body);
+                if !self.found {
+                    self.depth -= 1;
+                }
+                return;
+            }
+            hir::ExprKind::Closure(_) => {
+                // Closure body inside a loop is still inside the loop;
+                // do not count the closure as an additional nesting level.
+                // Visit the closure body to find the target inside it.
+                intravisit::walk_expr(self, expr);
+                return;
+            }
+            _ => {}
+        }
+
+        // Check if this is the target expression.
+        if expr.hir_id == self.target {
+            self.found = true;
+            return;
+        }
+
+        intravisit::walk_expr(self, expr);
+    }
+
+    // Don't descend into nested function definitions.
+    fn visit_item(&mut self, _item: &'tcx hir::Item<'tcx>) {}
+}
+
+impl<'tcx> LateLintPass<'tcx> for NestedLoopStorageAccess {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        let is_storage_access =
+            if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+                let method_name = path_segment.ident.name.as_str();
+                let is_terminal = matches!(method_name, "get" | "has" | "set" | "remove");
+                is_terminal
+                    && is_type_match(
+                        cx,
+                        cx.typeck_results().expr_ty(receiver),
+                        SOROBAN_STORAGE_TYPES,
+                    )
+            } else {
+                false
+            };
+
+        if !is_storage_access {
+            return;
+        }
+
+        // Walk the HIR tree from the crate root to find the target expression
+        // and compute its loop nesting depth.
+        let mut visitor = LoopDepthVisitor {
+            target: expr.hir_id,
+            depth: 0,
+            found: false,
+        };
+
+        // Start walking from the enclosing function body.
+        let owner = cx.tcx.hir_enclosing_body_owner(expr.hir_id);
+        let body = cx.tcx.hir_body_owned_by(owner);
+        visitor.visit_body(body);
+
+        if visitor.found && visitor.depth >= 2 {
+            span_lint_and_help(
+                cx,
+                NESTED_LOOP_STORAGE_ACCESS,
+                expr.span,
+                "storage operation inside a nested loop — cost is O(n·m)",
+                None,
+                "this storage access runs on every iteration of both loops, so its cost is \
+                 multiplicative rather than linear; hoist it out of at least one loop or \
+                 accumulate mutations in memory",
+            );
         }
     }
 }
@@ -1846,6 +1972,69 @@ fn is_valid_short_symbol(symbol_str: &str) -> bool {
     symbol_str
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// `soroban_sdk::Bytes` (and only `Bytes`) methods that copy a sub-range of
+/// the buffer. `slice` allocates and copies a sub-slice; `copy_from_slice`
+/// copies a native slice into the buffer; `copy_to_slice` copies the buffer
+/// out into a native slice. Every one is a metered host call that scales with
+/// the copied range, so repeating it per iteration of a loop that walks the
+/// buffer turns a linear traversal into a quadratic one.
+const BYTES_SLICE_METHODS: &[&str] = &["slice", "copy_from_slice", "copy_to_slice"];
+
+rustc_session::declare_lint! {
+    pub BYTES_SLICE_COPY_IN_LOOP,
+    Warn,
+    "repeatedly copying sub-slices of a `Bytes` buffer inside a loop"
+}
+
+/// Concrete pass that fires [`BYTES_SLICE_COPY_IN_LOOP`].
+pub struct BytesSliceCopyInLoop;
+rustc_session::impl_lint_pass!(BytesSliceCopyInLoop => [BYTES_SLICE_COPY_IN_LOOP]);
+
+/// Detection: for every `MethodCall` whose segment is one of
+/// [`BYTES_SLICE_METHODS`], peel references off the receiver and confirm the
+/// ADT is `soroban_sdk::Bytes` (slicing/copying is specific to `Bytes`, not
+/// the other container types). A match is reported only when
+/// [`enclosing_loop`] returns `Some`. This is distinct from
+/// [`BytesAppendInLoop`], which catches quadratic *growth* (reallocating as
+/// the buffer grows); this lint catches quadratic *reading* (re-copying the
+/// remaining buffer on each iteration as a parser walks a payload).
+impl<'tcx> LateLintPass<'tcx> for BytesSliceCopyInLoop {
+    /// Flags a sub-slice/copy-range call on `Bytes` inside a loop.
+    ///
+    /// The receiver type is matched against `soroban_sdk::Bytes` and the
+    /// method name against [`BYTES_SLICE_METHODS`]. Only syntactic loops are
+    /// considered.
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            let method_name = path_segment.ident.name.as_str();
+            if !BYTES_SLICE_METHODS.contains(&method_name) {
+                return;
+            }
+
+            let is_bytes = if let Some(adt_def) =
+                ty_adt_def(cx.typeck_results().expr_ty(receiver).peel_refs())
+            {
+                matches_any_path(cx, adt_def.did(), &[&["soroban_sdk", "Bytes"]])
+            } else {
+                false
+            };
+
+            if is_bytes && enclosing_loop(cx, expr).is_some() {
+                span_lint_and_help(
+                    cx,
+                    BYTES_SLICE_COPY_IN_LOOP,
+                    expr.span,
+                    "repeatedly copying a sub-slice of `Bytes` inside a loop",
+                    None,
+                    "prefer index-based access (e.g. `Bytes::get`) for per-byte reads, \
+                     or take the full slice once and iterate it outside the loop; \
+                     only slice once, not on every iteration",
+                );
+            }
+        }
+    }
 }
 
 // =======================================================================
@@ -4133,3 +4322,57 @@ fn storage_write_without_read_lookup_benchmark() {
         "storage_write_without_read_lookup/{N}x{N}: hashset={hashset_elapsed:?} vec_scan={vec_elapsed:?}"
     );
 }
+
+
+// =======================================================================
+// collection_len_in_loop_condition - Lint
+// =======================================================================
+
+rustc_session::declare_lint! {
+    /// ### What it does
+    /// Detects `.len()` calls on Soroban collections inside a `while` loop condition
+    /// when the collection is not mutated within the loop.
+    pub COLLECTION_LEN_IN_LOOP_CONDITION,
+    Warn,
+    "collection len() called in a loop condition without mutation"
+}
+
+pub struct CollectionLenInLoopCondition;
+rustc_session::impl_lint_pass!(CollectionLenInLoopCondition => [COLLECTION_LEN_IN_LOOP_CONDITION]);
+
+impl<'tcx> LateLintPass<'tcx> for CollectionLenInLoopCondition {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        if let hir::ExprKind::MethodCall(path_segment, receiver, _args, _span) = expr.kind {
+            if path_segment.ident.name.as_str() == "len" {
+                let receiver_ty = cx.typeck_results().expr_ty(receiver);
+                let peeled_ty = receiver_ty.peel_refs();
+                
+                if let rustc_middle::ty::Adt(adt_def, _) = peeled_ty.kind() {
+                    let did = adt_def.did();
+                    
+                    if match_soroban_def_path(cx, did, &["soroban_sdk", "vec", "Vec"]) ||
+                       match_soroban_def_path(cx, did, &["soroban_sdk", "map", "Map"]) ||
+                       match_soroban_def_path(cx, did, &["soroban_sdk", "bytes", "Bytes"]) ||
+                       match_soroban_def_path(cx, did, &["soroban_sdk", "string", "String"]) 
+                    {
+                        if let Some(loop_expr) = enclosing_loop(cx, expr) {
+                            if let hir::ExprKind::Loop(_block, _label, hir::LoopSource::While, _) = loop_expr.kind {
+                                if !depends_on_loop_state(cx, loop_expr, expr) {
+                                    clippy_utils::diagnostics::span_lint_and_help(
+                                        cx,
+                                        COLLECTION_LEN_IN_LOOP_CONDITION,
+                                        expr.span,
+                                        "collection len() called in a loop condition without mutation",
+                                        None,
+                                        "hoist/bind the collection's length into a local variable before the loop starts, and compare against that local in the while condition instead of calling .len() each iteration.",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

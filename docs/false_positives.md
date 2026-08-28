@@ -71,6 +71,14 @@ Every storage read or write inside any loop body is flagged.
 - **Counting or scanning patterns** — using a loop to count entries or scan through storage with `has()`.
 - **Handling:** Suppress intentional batch operations using `#[allow(soroban_storage_in_loop)]`.
 
+### `nested_loop_storage_access`
+
+Fires on storage operations at loop nesting depth ≥ 2 — i.e., a storage access inside two or more nested loops.
+
+- **Nested loop with intentional per-iteration writes** — writing to different keys in both loops where the multiplicative cost is inherent to the algorithm.
+- **Closures inside nested loops** — a closure body inside a nested loop that performs a storage access; the closure is the inner loop's body, not a separate nesting level.
+- **Handling:** If the nested storage access is intentional and the multiplicative cost is acceptable, suppress with `#[allow(nested_loop_storage_access)]`.
+
 ### `storage_write_without_read`
 
 Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` anywhere in the same function.
@@ -128,22 +136,12 @@ Flags cross-contract invocations (`env.invoke_contract(&addr, &sym, ())`) inside
 - **Overhead:** Each cross-contract call invokes host context switching and separate auth/cost accounting.
 - **Handling:** Batch cross-contract calls where possible; suppress with `#[allow(contract_call_in_loop)]` when per-item cross-contract dispatch is required.
 
-### `host_in_loop`
+### `cross_contract_result_discarded`
 
-Flags any method call on a `Host` object (`env.host()...`) inside a loop body. Unlike `unnecessary_host_function_call`, this lint performs no loop-invariance analysis — a `Host` use in a loop is always surfaced.
+Flags a `Env::invoke_contract` whose non-unit result is bound to `_` (`let _ = ...`) or dropped as a bare statement (`invoke_contract(...);`). A call whose result is bound to a named variable, used as an argument, or whose result type is the unit type `()` does not fire.
 
-- **Overhead:** `Host` operations cross the guest/host boundary and are metered per call.
-- **Loop-invariance:** Because the lint does not check whether the call result is loop-invariant, even a genuinely hoistable `Host` call is flagged. Hoist the `env.host()`-derived handle or the call itself outside the loop when the result is reused.
-- **Handling:** Suppress with `#[allow(host_in_loop)]` when every in-loop `Host` interaction is required.
-
-### `linear_scan_in_loop`
-
-Flags linear-time scans (`contains`, `position`, `find`) on a Soroban `Vec`/`Map` inside a loop when the scan argument does not depend on loop state.
-
-- **Overhead:** A per-iteration scan is O(n) on the collection, yielding O(n²) total cost.
-- **Near-miss — loop-variant argument:** a scan whose argument is the loop variable (e.g. `v.contains(&x)`) is genuinely per-iteration work and is correctly *not* flagged.
-- **Near-miss — impure argument:** an argument containing a method/function call is conservatively treated as loop-variant and the warning is suppressed.
-- **Handling:** Build a `Map` lookup outside the loop for O(1) access, or suppress with `#[allow(linear_scan_in_loop)]` when the scan is inherent to the algorithm.
+- **Overhead:** A cross-contract invocation pays for a full host-side dispatch, its own metered execution, and the conversion of the return value back across the guest/host boundary. Discarding that value pays for all of it to learn nothing.
+- **False positives:** When the call is made purely for its side effect and the return value is genuinely uninteresting (e.g. firing an event on another contract, triggering a state change), the warning is intentional-but-expected. Silence it deliberately by binding to a named variable (e.g. `let _result = env.invoke_contract::<T>(...);`) or with `#[allow(cross_contract_result_discarded)]`.
 
 ### `unnecessary_host_function_call`
 
@@ -158,6 +156,13 @@ Flags host function calls inside loops whose arguments do not depend on loop sta
 Fires on `.clone()` calls on `Env`. `Env` is a lightweight copyable handle.
 
 - **Consumed Env:** Where `Env` is consumed by value before a clone site, or in generic contexts that do not guarantee copy semantics.
+
+### `val_conversion_chain`
+
+Flags a chain of three or more `into_val` / `try_into_val` / `from_val` / `try_from_val` calls that bounce the same local value through `Val` across a `let` sequence.
+
+- **Forced signatures:** Helper functions with fixed, non-negotiable `Val`/native signatures can make a long chain look gratuitous while each hop is individually required by an API you do not control. Such cases should be silenced with `#[allow(val_conversion_chain)]` and, where possible, by adjusting the helper signatures so the value is converted directly into the shape the next step needs.
+- **Genuine value changes:** A conversion that produces a semantically different value for the next step (not merely re-packaging the same data) is out of scope; only needless multi-hop re-packaging is flagged.
 
 ### `symbol_new_for_short_literal`
 
@@ -455,12 +460,11 @@ Fixtures live in `soroban_cost_lints/ui/linear_scan_in_loop.rs`.
 - **Loop shapes:** `for`, `while`, and iterator-closure all fire for invariant scans; `Option::map` single-call sites are not loops and never fire.
 
 
-### `excessive_vec_capacity`
 
-Fixtures live in `soroban_cost_lints/ui/excessive_vec_capacity.rs`.
+## `collection_len_in_loop_condition`
 
-- **Firing cases:** `Vec::with_capacity(n)` and `.reserve(n)` where `n` is a hard-coded integer literal exceeding the threshold (4 096 elements) -- the lint fires on both associated function and method-call forms.
-- **Genuine near-miss 1 -- below threshold:** `Vec::with_capacity(100)` / `.reserve(100)` do not fire because the value is within the 4 096-element threshold.
-- **Genuine near-miss 2 -- runtime-derived capacity:** `Vec::with_capacity(n)` / `.reserve(n)` where `n` is a variable or function result are never flagged because the lint cannot determine their value statically.
-- **Genuine near-miss 3 -- at threshold:** `Vec::with_capacity(4096)` does not fire (the threshold is exclusive).
-- **Known false positives:** None at this time. The lint only targets `soroban_sdk::vec::Vec` -- ordinary `std::vec::Vec` usage is never flagged.
+### False Positives
+If a collection is mutated in a way that our lint cannot statically track (e.g., via interior mutability, or a cross-function call that mutates it but appears opaque to the lint pass), we may falsely suggest hoisting `.len()`. To be safe, the lint uses Clipy's `mutated_variables` utility, which conservatively assumes mutation if it sees borrows passed to external functions, but it can still miss complex cases.
+
+### False Negatives
+If a collection's `.len()` is inside a loop, but the collection is genuinely invariant, yet the lint sees a mutable borrow of the collection anywhere inside the loop (even if that borrow doesn't actually mutate the length, e.g., modifying an element in place), the lint will defensively bail and NOT warn, missing a valid hoist opportunity.
