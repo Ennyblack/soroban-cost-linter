@@ -333,5 +333,25 @@ Fires when `env.crypto().sha256(...)` / `env.crypto().keccak256(...)` is called 
 
   When the constant branch is deliberate — keeping a single, uniform hashing path for clarity or to share post-hash logic — suppress with `#[allow(crypto_hash_of_constant)]` at the call site, or split the constant case into its own precomputed `const` digest. This is the one pattern where the warning is correct in isolation but unwanted in context.
 
+### `unbounded_input_loop`
 
+Flags loops whose iteration count is derived from a function parameter (i.e. untrusted input) and whose body performs a storage write.
 
+- **Direct parameter reads only:** The lint detects parameter reads in the desugared range expression of `for` loops. A loop bounded by a local variable that was derived from a parameter (e.g. `let clamped = count.min(100); for i in 0..clamped`) is correctly NOT flagged, because the bound expression reads a local, not a parameter directly. This is the expected behavior for validated input bounds.
+- **While-loop bounds not detected:** The lint's block-statement walker does not currently detect parameter-derived bounds in `while` loops, because the condition is inside the loop body rather than in the desugared block's preceding statements. Only `for`-loop range expressions are checked.
+- **Handling:** Clamp the loop bound with `.min(CONST)` or validate the input before using it as a loop bound. Suppress with `#[allow(unbounded_input_loop)]` when the per-iteration storage write is intentional and the bound is already validated.
+
+### `signature_verification_in_loop`
+
+Flags signature-verification and public-key-recovery calls (`ed25519_verify`, `secp256k1_recover`, `secp256r1_verify`) on the `Crypto` accessor when they appear inside a loop.
+
+- **No known false positives:** every flagged call re-runs an expensive elliptic-curve check inside a loop, which is almost always a structural sign that batch or aggregate verification should be considered.
+- **Handling:** Use a signature scheme that supports batch verification, or move per-item auth to the callee via a bulk entrypoint. Suppress with `#[allow(signature_verification_in_loop)]` when per-iteration verification is intentional.
+
+### `require_auth_in_loop`
+
+Flags `Address::require_auth` or `require_auth_for_args` called inside a loop.
+
+- **Known false positive — distinct per-iteration addresses:** the lint does not check whether the address depends on the loop variable. When each iteration authorizes a genuinely distinct address (e.g. iterating over a list of addresses), the per-iteration auth is intentional and should not be flagged. Suppress with `#[allow(require_auth_in_loop)]` for such cases.
+- **Genuine finding — same address repeatedly:** when the same address is authorized on every iteration, the cost is real and the auth should be moved before the loop.
+- **Handling:** Collect distinct addresses first and authorize each once before the loop. Suppress with `#[allow(require_auth_in_loop)]` when per-item auth is intentional.
