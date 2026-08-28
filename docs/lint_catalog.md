@@ -37,6 +37,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `instance_storage_for_unbounded_data` | warn | unbounded collection written to instance storage | [Link](lints/instance_storage_for_unbounded_data.md) |
 | `formatted_panic_payload` | warn | format!, formatted panic!, or expect(&format!(..)) pulls string-formatting machinery into a contract | [Link](lints/formatted_panic_payload.md) |
 | `unwrap_on_storage_get` | warn | unwrap or expect directly on a storage read — panics on a missing or expired key | [Link](lints/unwrap_on_storage_get.md) |
+| `val_conversion_chain` | warn | chain of three or more Val-boundary conversions carrying the same value | [Link](lints/val_conversion_chain.md) |
 | `unbounded_recursion` | warn | unbounded recursion driven by caller-supplied input | [Link](lints/unbounded_recursion.md) |
 | `std_collection_in_contract` | warn | std collection type used in contract code — prefer soroban_sdk::Map / soroban_sdk::Vec | [Link](lints/std_collection_in_contract.md) |
 | `temporary_storage_for_persistent_data` | warn | temporary storage write followed by an unsafe read that assumes the value persists | [Link](lints/temporary_storage_for_persistent_data.md) |
