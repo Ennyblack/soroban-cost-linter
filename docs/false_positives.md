@@ -445,12 +445,11 @@ Fixtures live in `soroban_cost_lints/ui/linear_scan_in_loop.rs`.
 - **Loop shapes:** `for`, `while`, and iterator-closure all fire for invariant scans; `Option::map` single-call sites are not loops and never fire.
 
 
-### `excessive_vec_capacity`
 
-Fixtures live in `soroban_cost_lints/ui/excessive_vec_capacity.rs`.
+## `collection_len_in_loop_condition`
 
-- **Firing cases:** `Vec::with_capacity(n)` and `.reserve(n)` where `n` is a hard-coded integer literal exceeding the threshold (4 096 elements) -- the lint fires on both associated function and method-call forms.
-- **Genuine near-miss 1 -- below threshold:** `Vec::with_capacity(100)` / `.reserve(100)` do not fire because the value is within the 4 096-element threshold.
-- **Genuine near-miss 2 -- runtime-derived capacity:** `Vec::with_capacity(n)` / `.reserve(n)` where `n` is a variable or function result are never flagged because the lint cannot determine their value statically.
-- **Genuine near-miss 3 -- at threshold:** `Vec::with_capacity(4096)` does not fire (the threshold is exclusive).
-- **Known false positives:** None at this time. The lint only targets `soroban_sdk::vec::Vec` -- ordinary `std::vec::Vec` usage is never flagged.
+### False Positives
+If a collection is mutated in a way that our lint cannot statically track (e.g., via interior mutability, or a cross-function call that mutates it but appears opaque to the lint pass), we may falsely suggest hoisting `.len()`. To be safe, the lint uses Clipy's `mutated_variables` utility, which conservatively assumes mutation if it sees borrows passed to external functions, but it can still miss complex cases.
+
+### False Negatives
+If a collection's `.len()` is inside a loop, but the collection is genuinely invariant, yet the lint sees a mutable borrow of the collection anywhere inside the loop (even if that borrow doesn't actually mutate the length, e.g., modifying an element in place), the lint will defensively bail and NOT warn, missing a valid hoist opportunity.
