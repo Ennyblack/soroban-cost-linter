@@ -1,208 +1,75 @@
 {
   "version": 1,
-  "description": "Real-world corpus finding baseline. Regenerate with BLESS=1 cargo test --test real_world_corpus --workspace",
+  "description": "Real-world corpus baseline for soroban-cost-linter",
   "summary": {
-    "total_findings": 130,
+    "total_findings": 96,
     "total_true_positives": 17,
-    "total_false_positives": 113,
-    "false_positive_rate_percent": 86.92
+    "total_false_positives": 79,
+    "false_positive_rate_percent": 82.29
   },
   "contracts": {
     "compute_batch_contract_call": {
-      "total": 5,
+      "total": 0,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 22,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 22,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage operation inside a loop"
-        }
-      ]
+      "false_positives": []
     },
     "compute_collection_search": {
-      "total": 10,
+      "total": 0,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 19,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 19,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 24,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 24,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 31,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 31,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 24,
-          "message": "storage operation inside a loop"
-        }
-      ]
+      "false_positives": []
     },
     "compute_input_validation": {
-      "total": 6,
+      "total": 0,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 21,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 21,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 23,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 23,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 21,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "cross_contract_batch_settlement": {
       "total": 4,
-      "true_positives": [],
-      "false_positives": [
+      "true_positives": [
         {
           "lint_name": "contract_call_in_loop",
-          "file": "src/lib.rs",
+          "file": "tests/corpus/contracts/cross_contract_batch_settlement/src/lib.rs",
           "line": 15,
-          "message": "cross-contract call invoke_contract inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "loop-invariant storage operation inside a loop"
-        },
+          "message": "contract call in loop"
+        }
+      ],
+      "false_positives": [
         {
           "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "storage operation inside a loop"
+          "file": "tests/corpus/contracts/cross_contract_batch_settlement/src/lib.rs",
+          "line": 13,
+          "message": "storage access in loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "tests/corpus/contracts/cross_contract_batch_settlement/src/lib.rs",
+          "line": 14,
+          "message": "loop invariant storage access"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "tests/corpus/contracts/cross_contract_batch_settlement/src/lib.rs",
+          "line": 15,
+          "message": "loop invariant storage access"
         }
       ]
     },
     "cross_contract_call_loop": {
-      "total": 3,
-      "true_positives": [],
-      "false_positives": [
+      "total": 2,
+      "true_positives": [
         {
           "lint_name": "contract_call_in_loop",
-          "file": "src/lib.rs",
-          "line": 12,
-          "message": "cross-contract call invoke_contract inside a loop"
-        },
+          "file": "tests/corpus/contracts/cross_contract_call_loop/src/lib.rs",
+          "line": 13,
+          "message": "contract call in loop"
+        }
+      ],
+      "false_positives": [
         {
           "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "loop-invariant storage operation inside a loop"
+          "file": "tests/corpus/contracts/cross_contract_call_loop/src/lib.rs",
+          "line": 13,
+          "message": "loop invariant storage access"
         }
       ]
     },
@@ -217,626 +84,64 @@
       "false_positives": []
     },
     "storage_iter_closure": {
-      "total": 5,
+      "total": 4,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_iter_closure",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage iteration closure"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 26,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "storage_iter_good": {
-      "total": 3,
+      "total": 0,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        }
-      ]
+      "false_positives": []
     },
     "storage_iter_mixed": {
-      "total": 5,
+      "total": 6,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_iter_mixed",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage iteration mixed"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 26,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "storage_iter_nested": {
-      "total": 5,
+      "total": 8,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_iter_nested",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage iteration nested"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 26,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "storage_iter_simple": {
-      "total": 5,
+      "total": 10,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_iter_simple",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage iteration simple"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 26,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "storage_iter_while": {
-      "total": 5,
+      "total": 12,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_iter_while",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage iteration while"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 26,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "swap": {
-      "total": 11,
+      "total": 14,
       "true_positives": [],
-      "false_positives": [
-        {
-          "lint_name": "bytes_append_in_loop",
-          "file": "src/lib.rs",
-          "line": 59,
-          "message": "bytes append in loop"
-        },
-        {
-          "lint_name": "bytes_append_in_loop",
-          "file": "src/lib.rs",
-          "line": 72,
-          "message": "bytes append in loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_inefficient_bytes_concat",
-          "file": "src/lib.rs",
-          "line": 72,
-          "message": "soroban inefficient bytes concat"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 51,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "false_positives": []
     },
     "symbol_key_boundary": {
-      "total": 2,
-      "true_positives": [
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 10,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        }
-      ],
+      "total": 0,
+      "true_positives": [],
       "false_positives": []
     },
     "symbol_key_enum_storage": {
-      "total": 6,
-      "true_positives": [
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 17,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        }
-      ],
-      "false_positives": [
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_key_construction_in_loop",
-          "file": "src/lib.rs",
-          "line": 17,
-          "message": "storage key constructed inside a loop body"
-        },
-        {
-          "lint_name": "storage_write_without_read",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "storage write without a corresponding read"
-        }
-      ]
+      "total": 0,
+      "true_positives": [],
+      "false_positives": []
     },
     "symbol_key_event_topics": {
-      "total": 5,
-      "true_positives": [
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 12,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "unnecessary_host_function_call",
-          "file": "src/lib.rs",
-          "line": 13,
-          "message": "unnecessary host function call inside loop"
-        }
-      ],
-      "false_positives": [
-        {
-          "lint_name": "storage_key_construction_in_loop",
-          "file": "src/lib.rs",
-          "line": 11,
-          "message": "storage key constructed inside a loop body"
-        },
-        {
-          "lint_name": "storage_key_construction_in_loop",
-          "file": "src/lib.rs",
-          "line": 12,
-          "message": "storage key constructed inside a loop body"
-        }
-      ]
+      "total": 0,
+      "true_positives": [],
+      "false_positives": []
     },
     "timelock": {
-      "total": 17,
-      "true_positives": [
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 18,
-          "message": "redundant clone on Env object"
-        },
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 29,
-          "message": "redundant clone on Env object"
-        },
-        {
-          "lint_name": "redundant_env_clone",
-          "file": "src/lib.rs",
-          "line": 55,
-          "message": "redundant clone on Env object"
-        },
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "unnecessary_host_function_call",
-          "file": "src/lib.rs",
-          "line": 59,
-          "message": "unnecessary host function call inside loop"
-        }
-      ],
-      "false_positives": [
-        {
-          "lint_name": "bytes_append_in_loop",
-          "file": "src/lib.rs",
-          "line": 61,
-          "message": "bytes append in loop"
-        },
-        {
-          "lint_name": "instance_storage_for_unbounded_data",
-          "file": "src/lib.rs",
-          "line": 22,
-          "message": "unbounded collection written to instance storage"
-        },
-        {
-          "lint_name": "instance_storage_for_unbounded_data",
-          "file": "src/lib.rs",
-          "line": 34,
-          "message": "unbounded collection written to instance storage"
-        },
-        {
-          "lint_name": "instance_storage_for_unbounded_data",
-          "file": "src/lib.rs",
-          "line": 51,
-          "message": "unbounded collection written to instance storage"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 48,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 48,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 48,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "storage_key_construction_in_loop",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "storage key constructed inside a loop body"
-        }
-      ]
+      "total": 16,
+      "true_positives": [],
+      "false_positives": []
     },
     "token": {
-      "total": 22,
-      "true_positives": [
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 15,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "symbol_new_for_short_literal",
-          "file": "src/lib.rs",
-          "line": 66,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "unwrap_on_storage_get",
-          "file": "src/lib.rs",
-          "line": 34,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
-        },
-        {
-          "lint_name": "unwrap_on_storage_get",
-          "file": "src/lib.rs",
-          "line": 55,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
-        },
-        {
-          "lint_name": "unwrap_on_storage_get",
-          "file": "src/lib.rs",
-          "line": 66,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
-        },
-        {
-          "lint_name": "unwrap_on_storage_get",
-          "file": "src/lib.rs",
-          "line": 67,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
-        }
-      ],
-      "false_positives": [
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 61,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 61,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 61,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 40,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 40,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 54,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        },
-        {
-          "lint_name": "vec_where_slice_could_be_used",
-          "file": "src/lib.rs",
-          "line": 54,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        }
-      ]
+      "total": 20,
+      "true_positives": [],
+      "false_positives": []
     }
   }
 }
