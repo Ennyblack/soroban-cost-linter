@@ -389,6 +389,10 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "Uses 128-bit arithmetic where 64 bits would suffice",
         rationale: "wasm32 is a 32-bit target. 128-bit arithmetic is heavily emulated and extremely expensive; values provably within 64 bits should use u64/i64.",
     },
+    LintMetadata {
+        lint: PERSISTENT_STORAGE_FOR_EPHEMERAL_DATA,
+        category: LintCategory::EntryLifecycle,
+    },
 ];
 
 impl LintPass for SorobanCostLints {
