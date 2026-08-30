@@ -114,6 +114,13 @@
   {
     "category": "StorageOperations",
     "default_level": "warn",
+    "description": "reads a storage key that is never written anywhere in this crate",
+    "docs_path": "docs/lints/storage_read_never_written.md",
+    "name": "storage_read_never_written"
+  },
+  {
+    "category": "StorageOperations",
+    "default_level": "warn",
     "description": "storage write that blindly overwrites a previously written key without reading it back",
     "docs_path": "docs/lints/blind_storage_write.md",
     "name": "blind_storage_write"

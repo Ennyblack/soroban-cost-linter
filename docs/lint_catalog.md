@@ -24,6 +24,7 @@ This document provides a concise reference for all lints supported by **soroban-
 | `bytes_append_in_loop` | warn | repeatedly growing SDK containers inside loops | [Link](lints/bytes_append_in_loop.md) |
 | `string_concat_in_loop` | warn | repeatedly concatenating a soroban String inside a loop | [Link](lints/string_concat_in_loop.md) |
 | `storage_write_without_read` | warn | storage write without a corresponding read | [Link](lints/storage_write_without_read.md) |
+| `storage_read_never_written` | warn | reads a storage key that is never written anywhere in this crate | [Link](lints/storage_read_never_written.md) |
 | `blind_storage_write` | warn | storage write that blindly overwrites a previously written key without reading it back | [Link](lints/blind_storage_write.md) |
 | `inefficient_bytes_concat` | warn | inefficient bytes concatenation | [Link](lints/inefficient_bytes_concat.md) |
 | `map_insert_in_loop` | warn | Map::insert called inside a loop | [Link](lints/map_insert_in_loop.md) |

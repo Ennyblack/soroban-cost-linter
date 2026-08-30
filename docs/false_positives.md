@@ -41,6 +41,7 @@ The project runs continuous regression and triage checks against real-world Soro
 | `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
 | `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
 | `u128_where_u64_suffices` | 0 | 0 | warn | True positive: provably narrow 128-bit arithmetic operations on wasm32 |
+| `storage_read_never_written` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
 
 ### Target False-Positive Ratio & Policy
 
@@ -87,6 +88,16 @@ Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` a
 - **Near-miss — initializer skip:** Functions named `init` or `set_admin` are intentionally skipped.
 - **Cross-Function & Multi-Transaction Overwrites:** Storage written blindly as an update or status reset without reading first within the same function is flagged. If the overwrite is intentional, suppress with `#[allow(storage_write_without_read)]`.
 - **Syntactic Snippet Mismatch:** If the key expression in `has(&key)` is written differently from `set(key)` (e.g. referencing with/without `&`), the syntactic matcher will not correlate them.
+
+### `storage_read_never_written`
+
+Fires at a storage **read** site when the key is never written by a *statically-known* `set`/`has` anywhere else in the same crate. It is inherently heuristic — it accumulates reads and writes across the whole crate and reports only at the end — so a clean false-positive story matters more than for single-body lints.
+
+- **Cross-Contract State Sharing (the dominant false positive):** A contract routinely reads a key that another contract in the system writes. Factories, registries, and token/ledger adapters all rely on one contract reading state initialised by a different deployment. The lint cannot see across crate boundaries, so this read looks "never written" even though it is correct by design. This is the single most important false positive class for this lint and the reason it defaults to `warn` (not `deny`): the message explicitly says the write may live in another contract and that this is a warning, not proof of a bug.
+- **Dynamically Constructed Keys:** When a key is built from a parameter, a computed value, or other runtime input, its value is unknown at analysis time. Such reads do **not** fire (we can't prove the key is unwritten) **and** do not suppress findings about unrelated static keys — a dynamic read and a static read-never-written can coexist, and only the static one is reported.
+- **Distinct Key Spaces:** `instance`, `persistent`, and `temporary` storage are separate namespaces. A `persistent` write does not satisfy an `instance` read of the same literal key, so the read is still flagged. When the write legitimately lives in a different key space, this is a false positive to suppress with `#[allow(storage_read_never_written)]`.
+- **Key-Name Typos:** The intended use case — a typo that turned one logical entry into two — is also the hardest to confirm automatically, which is why the diagnostic is phrased as a warning rather than an accusation.
+- **Handling:** If the read is expected to be populated by another contract or by dynamic state, suppress with `#[allow(storage_read_never_written)]` at the read site or crate level.
 
 ### `vec_where_slice_could_be_used`
 

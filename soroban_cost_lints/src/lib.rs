@@ -5,10 +5,11 @@ extern crate rustc_hir;
 extern crate rustc_middle;
 extern crate rustc_span;
 
-use rustc_hir::{Expr, ExprKind, BinOpKind, UnOp, QPath};
+use rustc_hir::{Crate, Expr, ExprKind, BinOpKind, UnOp, QPath};
 use rustc_lint::{LateContext, LateLintPass, LintContext, LintPass};
 use rustc_middle::ty::{self, Ty};
 use rustc_span::Span;
+use std::collections::HashSet;
 
 mod discarded_storage_read;
 
