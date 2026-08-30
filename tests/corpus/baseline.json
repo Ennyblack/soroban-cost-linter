@@ -55,7 +55,8 @@
           "line": 15,
           "message": "loop invariant storage access"
         }
-      ]
+      ],
+      "false_positives": []
     },
     "lifecycle_basic": {
       "total": 0,
@@ -72,7 +73,7 @@
       "true_positives": [],
       "false_positives": [
         {
-          "lint_name": "storage_write_without_read",
+          "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
           "line": 17,
           "message": "storage write without a corresponding read"
@@ -230,64 +231,64 @@
       ],
       "false_positives": [
         {
-          "lint_name": "vec_where_slice_could_be_used",
+          "lint_name": "loop_invariant_storage_access",
           "file": "src/lib.rs",
-          "line": 51,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+          "line": 15,
+          "message": "storage access operation is loop-invariant and should be hoisted outside the loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 15,
+          "message": "storage access operation is loop-invariant and should be hoisted outside the loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 16,
+          "message": "storage access operation is loop-invariant and should be hoisted outside the loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 16,
+          "message": "storage access operation is loop-invariant and should be hoisted outside the loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 29,
+          "message": "storage access operation is loop-invariant and should be hoisted outside the loop"
+        },
+        {
+          "lint_name": "loop_invariant_storage_access",
+          "file": "src/lib.rs",
+          "line": 29,
+          "message": "storage access operation is loop-invariant and should be hoisted outside the loop"
+        },
+        {
+          "lint_name": "storage_write_without_read",
+          "file": "src/lib.rs",
+          "line": 36,
+          "message": "storage write (`set`) has no corresponding read (`get`/`has`) in function `run`"
         },
         {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
-          "line": 56,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 56,
-          "message": "loop-invariant storage operation inside a loop"
+          "line": 15,
+          "message": "soroban storage operation performed inside loop"
         },
         {
           "lint_name": "soroban_storage_in_loop",
           "file": "src/lib.rs",
-          "line": 58,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 58,
-          "message": "loop-invariant storage operation inside a loop"
+          "line": 16,
+          "message": "soroban storage operation performed inside loop"
         },
         {
           "lint_name": "bytes_append_in_loop",
           "file": "src/lib.rs",
-          "line": 59,
-          "message": "repeatedly growing SDK container inside a loop"
-        },
-        {
-          "lint_name": "bytes_append_in_loop",
-          "file": "src/lib.rs",
-          "line": 72,
-          "message": "repeatedly growing SDK container inside a loop"
+          "line": 15,
+          "message": "storage key construction performed inside loop"
         }
       ]
     },
@@ -315,16 +316,16 @@
       "total": 24,
       "true_positives": [
         {
-          "lint_name": "symbol_new_for_short_literal",
+          "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 15,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
+          "line": 61,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
-          "lint_name": "unwrap_on_storage_get",
+          "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 34,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+          "line": 72,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
           "lint_name": "vec_index_in_loop",
@@ -335,8 +336,8 @@
         {
           "lint_name": "unwrap_on_storage_get",
           "file": "src/lib.rs",
-          "line": 55,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+          "line": 78,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
           "lint_name": "vec_index_in_loop",
@@ -347,118 +348,142 @@
         {
           "lint_name": "unwrap_on_storage_get",
           "file": "src/lib.rs",
-          "line": 66,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+          "line": 84,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 90,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 96,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        }
+      ] 
+    },
+    "token": {
+      "total": 19,
+      "true_positives": [
         {
           "lint_name": "symbol_new_for_short_literal",
           "file": "src/lib.rs",
-          "line": 66,
-          "message": "Symbol::new called with a short literal that could use symbol_short! macro"
-        },
-        {
-          "lint_name": "unwrap_on_storage_get",
-          "file": "src/lib.rs",
-          "line": 67,
-          "message": "unwrap on a storage read traps the contract when the key is missing or expired"
+          "line": 17,
+          "message": "use `symbol_short!` for short symbol literals instead of `Symbol::new`"
         }
       ],
       "false_positives": [
         {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 40,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+          "line": 22,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 40,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 47,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 49,
-          "message": "loop-invariant storage operation inside a loop"
+          "line": 31,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 54,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+          "line": 41,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
           "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 54,
-          "message": "soroban_sdk::Vec parameter could be replaced with a native Rust slice"
+          "line": 51,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
-          "lint_name": "soroban_storage_in_loop",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "loop_invariant_storage_access",
-          "file": "src/lib.rs",
-          "line": 60,
-          "message": "loop-invariant storage operation inside a loop"
-        },
-        {
-          "lint_name": "soroban_storage_in_loop",
+          "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
           "line": 61,
-          "message": "storage operation inside a loop"
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
+          "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 61,
-          "message": "loop-invariant storage operation inside a loop"
+          "line": 71,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         },
         {
-          "lint_name": "loop_invariant_storage_access",
+          "lint_name": "vec_where_slice_could_be_used",
           "file": "src/lib.rs",
-          "line": 61,
-          "message": "loop-invariant storage operation inside a loop"
+          "line": 81,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 91,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 101,
+          "message": "prefer slice ;-)",
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 111,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 121,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 131,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 141,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 151,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 161,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 171,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 181,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
+        },
+        {
+          "lint_name": "vec_where_slice_could_be_used",
+          "file": "src/lib.rs",
+          "line": 191,
+          "message": "prefer slice &[T] over Vec<T> for function parameters where applicable"
         }
       ]
     }
