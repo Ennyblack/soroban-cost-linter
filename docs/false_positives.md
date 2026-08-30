@@ -22,7 +22,7 @@ The project runs continuous regression and triage checks against real-world Soro
 | **True Positives (TP)** | 26 | 25.5% |
 | **False Positives (FP)** | 76 | 74.5% |
 
-### Breakdown by Lint
+### New Cross-Contract Corpus Contracts Triage
 
 | Lint | False Positives | True Positives | Default Level | Tracking / Decision |
 |---|---:|---:|---|---|
