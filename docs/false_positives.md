@@ -18,17 +18,125 @@ The project runs continuous regression and triage checks against real-world Soro
 
 | Metric | Count | Percentage |
 |---|---:|---:|
-| **Total Findings** | 96 | 100.0% |
-| **True Positives (TP)** | 17 | 17.7% |
-| **False Positives (FP)** | 79 | 82.3% |
+| **Total Findings** | 102 | 100.0% |
+| **True Positives (TP)** | 26 | 25.5% |
+| **False Positives (FP)** | 76 | 74.5% |
 
 ### New Cross-Contract Corpus Contracts Triage
 
-1. **`cross_contract_call_outside_loop`**: Makes a single cross-contract transfer via `env.invoke_contract` outside of any loop. Result: **0 findings**. Correctly avoids flagging non-loop contract calls.
-2. **`cross_contract_batch_settlement`**: Performs a batch token transfer dispatch inside a `while` loop over recipient and amount collections. Result: `contract_call_in_loop` (1 finding, correct true/intentional positive for batch settlement), `soroban_storage_in_loop` (1 finding, false positive for collection index reads), and `loop_invariant_storage_access` (2 findings, false positives for vector handle access).
+| Lint | False Positives | True Positives | Default Level | Tracking / Decision |
+|---|---:|---:|---|---|
+| `loop_invariant_storage_access` | 23 | 0 | warn | Tracking precision enhancements for receiver-chain hoisting and loop-variant arguments |
+| `soroban_storage_in_loop` | 16 | 0 | warn | Intentional batch-write patterns; key variance analysis under design |
+| `storage_write_without_read` | 14 | 0 | warn | Blind overwrites and initialization flows across multi-tx invocations |
+| `vec_where_slice_could_be_used` | 11 | 0 | warn | Public interface entrypoints requiring SDK collections vs internal helpers |
+| `storage_key_construction_in_loop` | 4 | 0 | warn | Dynamic key construction in loop iterations |
+| `bytes_append_in_loop` | 4 | 0 | warn | Intentional growing buffers; recommend preallocating where possible |
+| `string_concat_in_loop` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
+| `instance_storage_for_unbounded_data` | 3 | 0 | warn | Collections bounded by contract invariants; storage footprint limit |
+| `soroban_inefficient_bytes_concat` | 0 | 2 | warn | True positive: inefficient Bytes concatenation inside a loop |
+| `contract_call_in_loop` | 1 | 0 | warn | Cross-contract batch dispatches |
+| `symbol_new_for_short_literal` | 0 | 10 | warn | True positive: short literals should use `symbol_short!` |
+| `unwrap_on_storage_get` | 0 | 4 | warn | True positive: direct unwrap on storage read |
+| `redundant_env_clone` | 0 | 3 | warn | True positive: redundant clones on `Env` handles |
+| `unnecessary_host_function_call` | 0 | 2 | warn | True positive: host functions callable outside loops |
+| `u128_where_u64_suffices` | 0 | 0 | warn | True positive: provably narrow 128-bit arithmetic operations on wasm32 |
+| `storage_read_never_written` | 0 | 0 | warn | New lint; not yet present in the corpus baseline — pending first corpus run |
+
+### Target False-Positive Ratio & Policy
+
+1. **Long-Term Target Ratio:**
+   Our goal is to reduce the corpus false-positive rate below **20%** across real-world contracts as dataflow, alias, and AST/HIR precision analyses mature.
+2. **Regression Guard (CI Gate):**
+   The baseline test (`real_world_corpus`) acts as a regression gate in CI.
+   - **FP Increases:** Any change that increases the number of false positives across the corpus will fail CI. Such changes must either be refined or accompanied by an explicit issue and maintainer approval.
+   - **FP Reductions:** When a lint precision improvement reduces false positives, the contributor must re-bless the baseline with `BLESS=1 cargo test --test real_world_corpus --workspace` and commit the updated `tests/corpus/baseline.json`.
 
 ---
 
 ## Known False Positive Patterns by Lint
 
-Refer to codebase history and documentation for specific lint suppression guidelines.
+### `loop_invariant_storage_access`
+
+Flags storage method calls (`env.storage()`, `.instance()`/`.persistent()`/`.temporary()`, and the terminal `get`/`has`/`set`) inside a loop whose operands are provably loop-invariant.
+
+- **Chain Warnings:** A single logical access `env.storage().instance().get(&1)` emits three warnings (one each for `storage()`, `instance()`, `get()`) because each call in the chain is evaluated independently.
+- **Loop-Variant Arguments with Constant Receivers:** When a call like `get(item)` varies with the loop variable `item`, the terminal `get` call is suppressed, but `env.storage().instance()` calls are still flagged if `env` is invariant. Hoist `let instance = env.storage().instance();` outside the loop to resolve.
+- **Intentional Dynamic Storage:** When storage access within a loop is intentional, suppress with `#[allow(loop_invariant_storage_access)]`.
+
+### `soroban_storage_in_loop`
+
+Every storage read or write inside any loop body is flagged.
+
+- **Batch writes with different keys** — iterating over a collection and writing each element under a different storage key.
+- **Storage reads that depend on the loop variable** — reading a value for each item in a collection, where the key changes per iteration.
+- **Counting or scanning patterns** — using a loop to count entries or scan through storage with `has()`.
+- **Handling:** Suppress intentional batch operations using `#[allow(soroban_storage_in_loop)]`.
+
+### `nested_loop_storage_access`
+
+Fires on storage operations at loop nesting depth ≥ 2 — i.e., a storage access inside two or more nested loops.
+
+- **Nested loop with intentional per-iteration writes** — writing to different keys in both loops where the multiplicative cost is inherent to the algorithm.
+- **Closures inside nested loops** — a closure body inside a nested loop that performs a storage access; the closure is the inner loop's body, not a separate nesting level.
+- **Handling:** If the nested storage access is intentional and the multiplicative cost is acceptable, suppress with `#[allow(nested_loop_storage_access)]`.
+
+### `storage_write_without_read`
+
+Fires on any `set` whose `(receiver, key)` snippet has no matching `get`/`has` anywhere in the same function.
+
+- **Near-miss — initializer skip:** Functions named `init` or `set_admin` are intentionally skipped.
+- **Cross-Function & Multi-Transaction Overwrites:** Storage written blindly as an update or status reset without reading first within the same function is flagged. If the overwrite is intentional, suppress with `#[allow(storage_write_without_read)]`.
+- **Syntactic Snippet Mismatch:** If the key expression in `has(&key)` is written differently from `set(key)` (e.g. referencing with/without `&`), the syntactic matcher will not correlate them.
+
+### `storage_read_never_written`
+
+Fires at a storage **read** site when the key is never written by a *statically-known* `set`/`has` anywhere else in the same crate. It is inherently heuristic — it accumulates reads and writes across the whole crate and reports only at the end — so a clean false-positive story matters more than for single-body lints.
+
+- **Cross-Contract State Sharing (the dominant false positive):** A contract routinely reads a key that another contract in the system writes. Factories, registries, and token/ledger adapters all rely on one contract reading state initialised by a different deployment. The lint cannot see across crate boundaries, so this read looks "never written" even though it is correct by design. This is the single most important false positive class for this lint and the reason it defaults to `warn` (not `deny`): the message explicitly says the write may live in another contract and that this is a warning, not proof of a bug.
+- **Dynamically Constructed Keys:** When a key is built from a parameter, a computed value, or other runtime input, its value is unknown at analysis time. Such reads do **not** fire (we can't prove the key is unwritten) **and** do not suppress findings about unrelated static keys — a dynamic read and a static read-never-written can coexist, and only the static one is reported.
+- **Distinct Key Spaces:** `instance`, `persistent`, and `temporary` storage are separate namespaces. A `persistent` write does not satisfy an `instance` read of the same literal key, so the read is still flagged. When the write legitimately lives in a different key space, this is a false positive to suppress with `#[allow(storage_read_never_written)]`.
+- **Key-Name Typos:** The intended use case — a typo that turned one logical entry into two — is also the hardest to confirm automatically, which is why the diagnostic is phrased as a warning rather than an accusation.
+- **Handling:** If the read is expected to be populated by another contract or by dynamic state, suppress with `#[allow(storage_read_never_written)]` at the read site or crate level.
+
+### `vec_where_slice_could_be_used`
+
+Fires when a function parameter takes `soroban_sdk::Vec<T>` by value rather than a native Rust slice `&[T]`.
+
+- **Public Contract Entrypoints:** Contract trait methods and exported functions must accept `soroban_sdk::Vec` to be callable across Soroban boundaries. For public interface entrypoints, suppress with `#[allow(vec_where_slice_could_be_used)]`.
+- **Internal Helper Functions:** Internal helpers should take `&[T]` or `&Vec<T>` to avoid host object creation and cloning overhead.
+
+### `storage_key_construction_in_loop`
+
+Flags constructing storage keys (such as `Symbol::new`, enum data keys, or tuple keys) inside loop bodies where the key is invariant.
+
+- **Hoisting:** Where the key is constant across iterations, hoist its construction outside the loop.
+- **Iteration-Dependent Keys:** If key construction depends on the loop index or element, suppress with `#[allow(storage_key_construction_in_loop)]`.
+
+### `bytes_append_in_loop`
+
+Flags calling `.append()` or `.push_back()` on `Bytes` or `Vec` inside loops.
+
+- **Host Reallocation Cost:** In Soroban, growing SDK containers allocates new host objects per iteration.
+- **Remedy:** Preallocate collections where length is known or accumulate natively before creating host objects. If incremental host appending is required, suppress with `#[allow(bytes_append_in_loop)]`.
+
+### `string_concat_in_loop`
+
+Flags `append` on (or `String + String` addition of) a `soroban_sdk::String` inside loops.
+
+- **Host Reallocation Cost:** Each concatenation allocates a fresh host buffer and copies the entire accumulated string, so building a string from `n` pieces inside a loop is O(n²) in the number of characters produced.
+- **Small Fixed-Bound Loops (Known False Positive):** The lint does **not** prove loop bounds — it fires on any syntactic loop, mirroring `bytes_append_in_loop`. A loop with a small, fixed iteration count (e.g. 2–3) is the documented false positive; suppress the specific call site with `#[allow(string_concat_in_loop)]` or accumulate the few pieces in a native `Vec` and construct the `String` once.
+- **Remedy:** Accumulate the pieces in a native collection (e.g. `Vec<String>` or `Vec<Bytes>`) inside the loop and construct the `String` a single time afterwards; pre-size where practical.
+
+### `instance_storage_for_unbounded_data`
+
+Flags writing collections (e.g. `Vec`, `Map`) to `instance` storage without an evident size bound.
+
+- **Footprint Risk:** Instance storage is limited to 64KB per contract and shares a single TTL with the contract executable.
+
+### `u128_where_u64_suffices`
+
+Flags 128-bit arithmetic on values provably within 64 bits.
+
+- **Token Balances & External Inputs:** Arithmetic derived directly from token balances, cross-contract calls, or caller-supplied `i128` parameters does not fire.
+- **Handling:** If a 128-bit type is genuinely required by business logic across the entire expression, suppress with `#[allow(u128_where_u64_suffices)]`.
