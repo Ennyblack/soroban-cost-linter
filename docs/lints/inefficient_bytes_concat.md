@@ -42,8 +42,8 @@ let result = Bytes::from_slice(&env, &buffer);
 
 ## Suggested Fix
 
-Avoid performing operator-based `Bytes` concatenation inside loops. Instead, accumulate data in a native vector or buffer and create the host `Bytes` object once after the loop.
+Replace `+` concatenation of `Bytes` values with a `Vec<u8>` buffer that accumulates bytes, then convert to `Bytes` once after the loop using `Bytes::from`.
 
-## Cost Impact
+## Relationship to other lints
 
-- **CPU instructions & Memory allocations:** Each per-iteration concatenation allocates a new host object and copies bytes, scaling quadratically with loop iterations and draining the transaction CPU/memory budget.
+Note that this lint (`inefficient_bytes_concat`) specifically flags the binary `+` operator (`b1 + b2`). A related lint, `soroban_inefficient_bytes_concat`, flags the `.push_back()` and `.append()` method calls on `Bytes`. They detect genuinely different code shapes, but both enforce the same best practice: accumulate bytes in a `Vec<u8>` instead of using host objects in a loop.
