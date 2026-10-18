@@ -192,14 +192,14 @@ fn bench_host_fn_inside_vs_outside_loop() {
     let env = Env::default();
 
     // ── Bad: host function call every iteration (constant result) ──
-    measure(&env, "unnecessary_host_fn_call", "bad", "ledger().sequence() in loop", || {
+    measure(&env, "unnecessary_host_function_call", "bad", "ledger().sequence() in loop", || {
         for _ in 0..ITER_COUNT {
             let _seq = env.ledger().sequence();
         }
     });
 
     // ── Good: hoist host call outside the loop ──
-    measure(&env, "unnecessary_host_fn_call", "good", "hoisted + reuse in loop", || {
+    measure(&env, "unnecessary_host_function_call", "good", "hoisted + reuse in loop", || {
         let seq = env.ledger().sequence();
         let mut sum: u64 = 0;
         for _ in 0..ITER_COUNT {
@@ -322,13 +322,13 @@ fn bench_redundant_storage_read() {
         env.storage().instance().set(&key, &42i32);
 
         // ── Bad: redundant gets ──
-        measure(&env, "redundant_storage_read", "bad", "get() twice", || {
+        measure(&env, "soroban_redundant_storage_read", "bad", "get() twice", || {
             let _a = env.storage().instance().get::<_, i32>(&key);
             let _b = env.storage().instance().get::<_, i32>(&key);
         });
 
         // ── Good: read once and reuse ──
-        measure(&env, "redundant_storage_read", "good", "get() once + reuse", || {
+        measure(&env, "soroban_redundant_storage_read", "good", "get() once + reuse", || {
             let a = env.storage().instance().get::<_, i32>(&key);
             let _b = a;
         });
@@ -345,7 +345,7 @@ fn bench_instance_storage_unbounded_data() {
         let key = symbol_short!("vec");
 
         // ── Bad: Vec in instance storage ──
-        measure(&env, "instance_unbounded_data", "bad", "Vec in instance storage", || {
+        measure(&env, "instance_storage_for_unbounded_data", "bad", "Vec in instance storage", || {
             let mut participants: soroban_sdk::Vec<i32> = env
                 .storage()
                 .instance()
@@ -356,7 +356,7 @@ fn bench_instance_storage_unbounded_data() {
         });
 
         // ── Good: item in persistent storage ──
-        measure(&env, "instance_unbounded_data", "good", "entry in persistent", || {
+        measure(&env, "instance_storage_for_unbounded_data", "good", "entry in persistent", || {
             let participant_key = 1i32;
             env.storage().persistent().set(&participant_key, &true);
         });
@@ -374,7 +374,7 @@ fn bench_loop_invariant_storage_access() {
         env.storage().instance().set(&key, &42i32);
 
         // ── Bad: get() inside loop ──
-        measure(&env, "loop_invariant_storage", "bad", "get() inside loop", || {
+        measure(&env, "loop_invariant_storage_access", "bad", "get() inside loop", || {
             let mut sum = 0;
             for _ in 0..STORAGE_ITER_COUNT {
                 let val: i32 = env.storage().instance().get(&key).unwrap();
@@ -384,7 +384,7 @@ fn bench_loop_invariant_storage_access() {
         });
 
         // ── Good: get() outside loop ──
-        measure(&env, "loop_invariant_storage", "good", "get() outside loop", || {
+        measure(&env, "loop_invariant_storage_access", "good", "get() outside loop", || {
             let val: i32 = env.storage().instance().get(&key).unwrap();
             let mut sum2 = 0;
             for _ in 0..STORAGE_ITER_COUNT {
@@ -402,7 +402,7 @@ fn bench_storage_key_construction_in_loop() {
     let env = Env::default();
 
     // ── Bad: build key in loop ──
-    measure(&env, "storage_key_in_loop", "bad", "build key in loop", || {
+    measure(&env, "storage_key_construction_in_loop", "bad", "build key in loop", || {
         for _ in 0..ITER_COUNT {
             let key = symbol_short!("key");
             std::hint::black_box(key);
@@ -410,7 +410,7 @@ fn bench_storage_key_construction_in_loop() {
     });
 
     // ── Good: build key outside loop ──
-    measure(&env, "storage_key_in_loop", "good", "hoisted key", || {
+    measure(&env, "storage_key_construction_in_loop", "good", "hoisted key", || {
         let key = symbol_short!("key");
         for _ in 0..ITER_COUNT {
             std::hint::black_box(&key);
