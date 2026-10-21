@@ -44,6 +44,7 @@ See the [Cost Rationale](../cost_rationale.md) page for a full explanation of So
 | [`redundant_require_auth`](redundant_require_auth.md) | `warn` | require_auth called more than once on the same address in a single function body |
 | [`collection_len_in_loop_condition`](collection_len_in_loop_condition.md) | `warn` | collection len() called in a loop condition without mutation |
 | [`cross_contract_result_discarded`](cross_contract_result_discarded.md) | `warn` | cross-contract call result discarded |
+| [`redundant_val_conversion`](redundant_val_conversion.md) | `warn` | a value converted into the type it already has, or bounced through `Val` and back in one expression |
 
 ## Memory
 

@@ -46,5 +46,6 @@ This document provides a concise reference for all lints supported by **soroban-
 | `large_constant_array` | warn | embedding a large constant array in contract code | [Link](lints/large_constant_array.md) |
 | `collection_len_in_loop_condition` | warn | collection len() called in a loop condition without mutation | [Link](lints/collection_len_in_loop_condition.md) |
 | `cross_contract_result_discarded` | warn | cross-contract call result discarded | [Link](lints/cross_contract_result_discarded.md) |
+| `redundant_val_conversion` | warn | a value converted into the type it already has, or bounced through `Val` and back in one expression | [Link](lints/redundant_val_conversion.md) |
 
 *Severities can be overridden via `budget.toml`.*

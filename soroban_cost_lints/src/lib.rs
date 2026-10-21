@@ -43,6 +43,7 @@ mod ledger_context_read_in_loop;
 mod loop_invariant_storage_access;
 mod option_wrapping_in_storage;
 mod redundant_require_auth;
+mod redundant_val_conversion;
 mod require_auth_in_loop;
 mod soroban_redundant_storage_read;
 mod storage_read_modify_write;
@@ -110,6 +111,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         LARGE_CONSTANT_ARRAY,
         COLLECTION_LEN_IN_LOOP_CONDITION,
         CROSS_CONTRACT_RESULT_DISCARDED,
+        REDUNDANT_VAL_CONVERSION,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -182,6 +184,7 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
     lint_store.register_late_pass(|_| {
         Box::new(cross_contract_result_discarded::CrossContractResultDiscarded)
     });
+    lint_store.register_late_pass(|_| Box::new(redundant_val_conversion::RedundantValConversion));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -417,6 +420,17 @@ rustc_session::declare_lint! {
     pub CROSS_CONTRACT_RESULT_DISCARDED,
     Warn,
     "cross-contract call result discarded"
+}
+
+// A `Val`-boundary conversion that lands on a type it started from — either a
+// straight `T -> T` no-op or a `T -> Val -> T` round trip inside one expression
+// — pays metered host calls to hand back the value it was given. Three or more
+// hops belong to `VAL_CONVERSION_CHAIN`; this lint owns the one- and two-hop
+// cases.
+rustc_session::declare_lint! {
+    pub REDUNDANT_VAL_CONVERSION,
+    Warn,
+    "a value converted into the type it already has, or bounced through `Val` and back in one expression"
 }
 
 pub struct SorobanCostLints;
@@ -678,6 +692,12 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "cross-contract call result discarded",
         rationale: "A cross-contract invocation pays host dispatch, a fresh VM context for the callee and conversion of the return value across the boundary; discarding that value pays the full cost for an answer that is thrown away.",
     },
+    LintMeta {
+        name: "redundant_val_conversion",
+        category: LintCategory::Compute,
+        description: "a value converted into the type it already has, or bounced through `Val` and back in one expression",
+        rationale: "Each `Val`-boundary crossing is a metered host call plus a (de)serialisation; a conversion to the same type, or a `T -> Val -> T` round trip in one expression, pays those crossings to hand back the value it started with.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -721,6 +741,7 @@ dylint_lint_impl! {
         LARGE_CONSTANT_ARRAY,
         COLLECTION_LEN_IN_LOOP_CONDITION,
         CROSS_CONTRACT_RESULT_DISCARDED,
+        REDUNDANT_VAL_CONVERSION,
     ]
 }
 

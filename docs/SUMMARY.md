@@ -58,6 +58,7 @@
   * [large\_constant\_array](lints/large_constant_array.md)
   * [collection\_len\_in\_loop\_condition](lints/collection_len_in_loop_condition.md)
   * [cross\_contract\_result\_discarded](lints/cross_contract_result_discarded.md)
+  * [redundant\_val\_conversion](lints/redundant_val_conversion.md)
 
 ## Branding
 
