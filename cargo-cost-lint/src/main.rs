@@ -877,6 +877,7 @@ fn main() {
         let reader = BufReader::new(stdout);
         let mut highest_exit_code = 0;
         let mut sarif_findings = Vec::new();
+        let mut text_findings = Vec::new();
         let mut recorded_stdout = String::new();
 
         for line_str in reader.lines().map_while(Result::ok) {
@@ -982,6 +983,9 @@ fn main() {
                             eprint!("{}", rendered);
                             recorded_stdout.push_str(rendered);
                         }
+                        // Keep the finding so the run can close with the
+                        // per-lint summary the README documents.
+                        text_findings.push(finding);
                     }
                     OutputFormat::Json => {
                         if let Ok(json_str) = serde_json::to_string(&finding) {
@@ -1011,6 +1015,26 @@ fn main() {
             let sarif_str = output_formatters::generate_sarif_report(&sarif_findings);
             print!("{}", sarif_str);
             recorded_stdout.push_str(&sarif_str);
+        }
+
+        // Close a *filtered* text run (`--diff-only` or a `.lintignore`) with
+        // the per-lint summary the README documents. A plain text run takes the
+        // raw-echo branch and deliberately stays byte-for-byte equal to cargo's
+        // own output (an invariant asserted by `cli_diff_only_text`), so it is
+        // not annotated here; this stream path — which already reconstructs the
+        // diagnostics — is where the summary belongs. `print_findings_summary`
+        // no-ops for the machine formats, and `--quiet` suppresses it entirely.
+        if cli.format == OutputFormat::Text && !quiet {
+            let mut buf = Vec::new();
+            output_formatters::print_findings_summary(
+                &OutputFormat::Text,
+                &text_findings,
+                &mut buf,
+            )
+            .ok();
+            let summary = String::from_utf8_lossy(&buf);
+            eprint!("{}", summary);
+            recorded_stdout.push_str(&summary);
         }
 
         let status = child.wait().expect("Failed to wait on cargo dylint");

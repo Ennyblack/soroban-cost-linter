@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use clap::ValueEnum;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -230,6 +228,11 @@ pub struct SarifRegion {
 
 /// Store a finding for SARIF generation and print it for human/machine
 /// readable formats (Text, Json, Github).
+///
+/// Retained for the crate's own tests and as a reusable sink-side printer;
+/// `main.rs` currently renders per-format inline, so this entry point is not
+/// wired into the binary yet.
+#[allow(dead_code)]
 pub fn handle_finding<W: Write>(
     cli: &crate::Cli,
     finding: &LintFinding,
@@ -322,6 +325,10 @@ pub fn print_findings_summary<W: Write>(
 }
 
 /// Format a finding as a human-readable text diagnostic.
+///
+/// The binary renders cargo's own `rendered` text in the stream, so this
+/// helper is not wired into the run path yet; it stays for the crate's tests.
+#[allow(dead_code)]
 pub fn format_diagnostic(finding: &LintFinding) -> String {
     let severity_prefix = match finding.level.as_str() {
         "error" | "deny" => "error",

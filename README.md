@@ -300,16 +300,25 @@ LL |     let _cloned = env.clone();
    = help: pass `Env` by reference or value instead of cloning
    = note: `#[warn(redundant_env_clone)]` on by default
 
-lint summary:
-  redundant_env_clone: 1
-  soroban_storage_in_loop: 3
-  unnecessary_host_function_call: 2
-total: 6
+Found 3 cost lint findings:
+  By lint name:
+    - redundant_env_clone: 1
+    - soroban_storage_in_loop: 1
+    - unnecessary_host_function_call: 1
+  By severity:
+    - warning: 3
 ```
+
+The text-mode run above closes with a per-lint findings summary. That roll-up
+is printed whenever a text run applies a filter — either `--diff-only` or a
+discovered `.lintignore`. A plain `cargo cost-lint` passes rustc's own
+diagnostics through verbatim and omits the summary, and `--quiet` suppresses it
+too; `--format json`, `sarif` and `github` never emit it, so their output stays
+machine-parseable.
 
 For detailed examples of each lint and instructions on suppressing false positives, see the [`docs/lints/`](docs/lints) directory.
 
-For instructions on CI/CD integration, configuring the `budget.toml` file, and setting a maximum warnings threshold, see the [Integration Guide](docs/integration.md).
+For instructions on CI/CD integration and configuring the `budget.toml` file, see the [Integration Guide](docs/integration.md).
 
 
 ## Contributing
