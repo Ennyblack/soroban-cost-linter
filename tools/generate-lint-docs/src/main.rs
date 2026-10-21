@@ -545,6 +545,41 @@ fn summary_broken_links(summary: &str, docs_dir: &Path) -> Vec<String> {
         .collect()
 }
 
+/// `docs/lints/*.md` pages whose file stem is not a registered lint.
+///
+/// A per-lint page can outlive its `declare_lint!` — the lint is removed or
+/// renamed, but the markdown stays behind. The generated indexes are built
+/// solely from the registry (`parse_lib_rs`), so a dangling page never appears
+/// in them and no other `--check` clause notices it. Enumerate the per-lint
+/// pages and report any stem absent from `entries`. `README.md` is the
+/// generated reference index, not a lint page, so it is skipped — the same rule
+/// [`parse_summary_links`] applies to summary links.
+fn orphan_lint_pages(lints_dir: &Path, entries: &[LintEntry]) -> Vec<String> {
+    let registered: HashSet<String> = entries.iter().map(|entry| entry.name_doc.clone()).collect();
+
+    let mut orphans = Vec::new();
+    let Ok(read_dir) = fs::read_dir(lints_dir) else {
+        return orphans;
+    };
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if stem == "README" {
+            continue;
+        }
+        if !registered.contains(stem) {
+            orphans.push(stem.to_string());
+        }
+    }
+    orphans.sort();
+    orphans
+}
+
 fn main() {
     let check_mode = std::env::args().any(|a| a == "--check");
 
@@ -553,6 +588,7 @@ fn main() {
     let catalog_path = resolve_path("docs/lint_catalog.md");
     let summary_path = resolve_path("docs/SUMMARY.md");
     let docs_dir = resolve_path("docs");
+    let lints_dir = resolve_path("docs/lints");
 
     if !lib_path.exists() {
         eprintln!(
@@ -616,6 +652,22 @@ fn main() {
                 "❌ docs/SUMMARY.md links to pages that do not exist: {}. Either add the page \
                  or drop the entry.",
                 broken.join(", ")
+            );
+            exit_code = 1;
+        }
+
+        // A per-lint page with no matching lint is invisible to the generated
+        // indexes above (they read only the registry), so check the page set
+        // directly: any `docs/lints/*.md` whose stem is not a registered lint
+        // makes the shipped catalogue advertise a lint the CLI cannot deny.
+        let orphans = orphan_lint_pages(&lints_dir, &entries);
+        if !orphans.is_empty() {
+            eprintln!(
+                "❌ docs/lints/ has pages with no matching registered lint: {}. Delete \
+                 the orphan page, or move a genuinely planned lint to \
+                 soroban_cost_lints/ui_pending/README.md and keep it out of the shipped \
+                 catalogue.",
+                orphans.join(", ")
             );
             exit_code = 1;
         }
@@ -1273,6 +1325,55 @@ multiline description"
         assert!(
             !status.success(),
             "--check should fail when a registered lint is missing from docs/SUMMARY.md"
+        );
+    }
+
+    #[test]
+    fn orphan_lint_pages_flags_only_unregistered_stems() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lints = tmp.path();
+
+        let entries = parse_lib_rs(SINGLE_LINT); // registered: soroban_storage_in_loop
+
+        fs::write(lints.join("soroban_storage_in_loop.md"), "# registered\n").unwrap();
+        fs::write(lints.join("blind_storage_write.md"), "# orphan\n").unwrap();
+        // The generated index and a non-markdown file must both be ignored.
+        fs::write(lints.join("README.md"), "# index\n").unwrap();
+        fs::write(lints.join("notes.txt"), "not a lint page\n").unwrap();
+
+        assert_eq!(
+            orphan_lint_pages(lints, &entries),
+            vec!["blind_storage_write".to_string()],
+            "only the page with no matching registered lint is an orphan"
+        );
+    }
+
+    #[test]
+    fn orphan_lint_pages_reports_a_missing_dir_as_clean() {
+        // `docs/lints` may be absent in a minimal fixture; that is not an error,
+        // simply "no orphan pages".
+        let tmp = tempfile::tempdir().unwrap();
+        let entries = parse_lib_rs(SINGLE_LINT);
+        assert!(orphan_lint_pages(&tmp.path().join("nope"), &entries).is_empty());
+    }
+
+    #[test]
+    fn check_mode_fails_when_an_unregistered_page_exists() {
+        let bin = find_binary();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+
+        consistent_workspace(root);
+        // A page whose lint was removed/renamed but whose markdown stayed.
+        write_lint_page(root, "ghost_lint");
+
+        let status = Command::new(&bin)
+            .args(["--check", "--workspace-root", root.to_str().unwrap()])
+            .status()
+            .expect("Failed to execute binary");
+        assert!(
+            !status.success(),
+            "--check should fail when docs/lints/ holds a page with no registered lint"
         );
     }
 
