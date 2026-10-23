@@ -59,6 +59,9 @@
   * [collection\_len\_in\_loop\_condition](lints/collection_len_in_loop_condition.md)
   * [cross\_contract\_result\_discarded](lints/cross_contract_result_discarded.md)
   * [redundant\_val\_conversion](lints/redundant_val_conversion.md)
+  * [blind\_storage\_write](lints/blind_storage_write.md)
+  * [bytes\_slice\_copy\_in\_loop](lints/bytes_slice_copy_in_loop.md)
+  * [excessive\_vec\_capacity](lints/excessive_vec_capacity.md)
 
 ## Branding
 

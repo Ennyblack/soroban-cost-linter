@@ -34,10 +34,13 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+mod blind_storage_write;
+mod bytes_slice_copy_in_loop;
 mod collection_len_in_loop_condition;
 mod cross_contract_result_discarded;
 mod discarded_storage_read;
 mod duplicate_storage_key_construction;
+mod excessive_vec_capacity;
 mod large_constant_array;
 mod ledger_context_read_in_loop;
 mod loop_invariant_storage_access;
@@ -112,6 +115,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         COLLECTION_LEN_IN_LOOP_CONDITION,
         CROSS_CONTRACT_RESULT_DISCARDED,
         REDUNDANT_VAL_CONVERSION,
+        BLIND_STORAGE_WRITE,
+        BYTES_SLICE_COPY_IN_LOOP,
+        EXCESSIVE_VEC_CAPACITY,
     ]);
 
     // Restored with the pass implementations 3e70958 deleted.
@@ -185,6 +191,9 @@ pub fn register_lints(sess: &rustc_session::Session, lint_store: &mut LintStore)
         Box::new(cross_contract_result_discarded::CrossContractResultDiscarded)
     });
     lint_store.register_late_pass(|_| Box::new(redundant_val_conversion::RedundantValConversion));
+    lint_store.register_late_pass(|_| Box::new(blind_storage_write::BlindStorageWrite));
+    lint_store.register_late_pass(|_| Box::new(bytes_slice_copy_in_loop::BytesSliceCopyInLoop));
+    lint_store.register_late_pass(|_| Box::new(excessive_vec_capacity::ExcessiveVecCapacity));
 }
 
 // A `Host` handle is a VM-boundary object: obtaining one inside a loop pays
@@ -300,6 +309,24 @@ rustc_session::declare_lint! {
     pub MAP_INSERT_IN_LOOP,
     Warn,
     "Map::insert called inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub BLIND_STORAGE_WRITE,
+    Warn,
+    "blind storage write overwrites a previously written key without reading it back"
+}
+
+rustc_session::declare_lint! {
+    pub BYTES_SLICE_COPY_IN_LOOP,
+    Warn,
+    "repeatedly copying a sub-slice of `Bytes` inside a loop"
+}
+
+rustc_session::declare_lint! {
+    pub EXCESSIVE_VEC_CAPACITY,
+    Warn,
+    "excessive pre-allocation capacity in Soroban Vec"
 }
 
 rustc_session::declare_lint! {
@@ -698,6 +725,24 @@ pub const LINT_METADATA: &[LintMeta] = &[
         description: "a value converted into the type it already has, or bounced through `Val` and back in one expression",
         rationale: "Each `Val`-boundary crossing is a metered host call plus a (de)serialisation; a conversion to the same type, or a `T -> Val -> T` round trip in one expression, pays those crossings to hand back the value it started with.",
     },
+    LintMeta {
+        name: "blind_storage_write",
+        category: LintCategory::Storage,
+        description: "blind storage write overwrites a previously written key without reading it back",
+        rationale: "A second write to a key the function already wrote, with no read in between, discards the first store; the contract pays two metered writes for one surviving value, which usually means dead work or a missing read.",
+    },
+    LintMeta {
+        name: "bytes_slice_copy_in_loop",
+        category: LintCategory::Memory,
+        description: "repeatedly copying a sub-slice of `Bytes` inside a loop",
+        rationale: "Bytes::slice and the copy-range methods allocate and copy through a metered host call; doing that per iteration turns a linear traversal of the payload into O(n^2) bytes of host traffic.",
+    },
+    LintMeta {
+        name: "excessive_vec_capacity",
+        category: LintCategory::Memory,
+        description: "excessive pre-allocation capacity in Soroban Vec",
+        rationale: "Pre-allocating host-side Vec capacity far beyond what the contract can fill is billed at allocation time; starting empty and growing on demand keeps the metered footprint proportional to the data actually stored.",
+    },
 ];
 
 dylint_lint_impl! {
@@ -742,6 +787,9 @@ dylint_lint_impl! {
         COLLECTION_LEN_IN_LOOP_CONDITION,
         CROSS_CONTRACT_RESULT_DISCARDED,
         REDUNDANT_VAL_CONVERSION,
+        BLIND_STORAGE_WRITE,
+        BYTES_SLICE_COPY_IN_LOOP,
+        EXCESSIVE_VEC_CAPACITY,
     ]
 }
 
