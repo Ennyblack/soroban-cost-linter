@@ -4,8 +4,8 @@
   <p>
     <img src="https://img.shields.io/github/actions/workflow/status/Tollcraft/soroban-cost-linter/lint.yml?branch=main" alt="CI Status" />
     <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License" />
-    <a href="https://scorecard.dev/viewer/?uri=github.com/tollcraft/soroban-cost-linter">
-      <img src="https://api.scorecard.dev/projects/github.com/tollcraft/soroban-cost-linter/badge" alt="OpenSSF Scorecard" />
+    <a href="https://scorecard.dev/viewer/?uri=github.com/Tollcraft/soroban-cost-linter">
+      <img src="https://api.scorecard.dev/projects/github.com/Tollcraft/soroban-cost-linter/badge" alt="OpenSSF Scorecard" />
     </a>
   </p>
   <p>
