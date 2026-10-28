@@ -1,4 +1,7 @@
 #![no_std]
+extern crate alloc;
+
+use alloc::vec::Vec;
 use soroban_sdk::{Bytes, Env, String, Symbol};
 
 mod mycrate {
@@ -75,8 +78,9 @@ fn bad_nested_sdk_paths(env: Env) {
     let _symbol = Symbol::new(&env, "short");
     let text = String::from_str(&env, "bytes");
     let _bytes = text.to_bytes();
-    let buffer = [1u8, 2, 3];
+    let mut buffer = Vec::new();
     for _ in 0..2 {
+        buffer.push(1u8);
         let _text = String::from_bytes(&env, &buffer);
     }
 
